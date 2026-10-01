@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PencilIcon, Trash2Icon, XIcon } from "lucide-react";
+import { MessageSquareIcon, PencilIcon, SendIcon, Trash2Icon, XIcon } from "lucide-react";
 import { ConfirmAction } from "@/components/app/confirm-action";
 import { NoAccess } from "@/components/app/no-access";
 import { OptInBadge } from "@/components/app/opt-in-badge";
@@ -16,6 +16,7 @@ import { contactDisplayName } from "@/lib/contacts/fields";
 import { can, getTenantContext } from "@/server/authz/tenant";
 import { listCustomFields } from "@/server/contacts/custom-fields";
 import { getContact } from "@/server/contacts/service";
+import { db } from "@/server/db/client";
 import { listTags } from "@/server/contacts/tags";
 import { isAppError } from "@/server/errors";
 import {
@@ -38,7 +39,17 @@ export default async function ContactPage({ params }: PageProps<"/w/[slug]/conta
     if (isAppError(e) && e.code === "NOT_FOUND") notFound();
     throw e;
   });
-  const [allTags, customFields] = await Promise.all([listTags(ctx), listCustomFields(ctx)]);
+  const [allTags, customFields, conversation] = await Promise.all([
+    listTags(ctx),
+    listCustomFields(ctx),
+    can(ctx, "inbox:read")
+      ? db.conversation.findFirst({
+          where: { workspaceId: ctx.workspaceId, contactId: id },
+          orderBy: { lastMessageAt: { sort: "desc", nulls: "last" } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+  ]);
   const canWrite = can(ctx, "contacts:write");
   const canDelete = can(ctx, "contacts:delete");
   const custom = (contact.customFields ?? {}) as Record<string, string>;
@@ -57,6 +68,22 @@ export default async function ContactPage({ params }: PageProps<"/w/[slug]/conta
         description={contact.company ?? undefined}
         actions={
           <>
+            {conversation && (
+              <Button variant="outline" asChild>
+                <Link href={`/w/${slug}/inbox?f=all&c=${conversation.id}`}>
+                  <MessageSquareIcon />
+                  Open conversation
+                </Link>
+              </Button>
+            )}
+            {can(ctx, "inbox:reply") && (
+              <Button asChild>
+                <Link href={`/w/${slug}/inbox/new?contactId=${id}`}>
+                  <SendIcon />
+                  Send WhatsApp message
+                </Link>
+              </Button>
+            )}
             {canWrite && (
               <Button variant="outline" asChild>
                 <Link href={`/w/${slug}/contacts/${id}/edit`}>

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPlan } from "@/config/plans";
+import { ACCOUNT_STATUS } from "@/lib/whatsapp-display";
 import { can, getTenantContext } from "@/server/authz/tenant";
 import { getWorkspaceOverview } from "@/server/workspace/service";
 
@@ -27,11 +28,17 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
   const overview = await getWorkspaceOverview(ctx);
   const plan = getPlan(ctx.workspace.planId);
   const stepIndex = STEP_ORDER.indexOf(ctx.workspace.onboardingStep);
+  const primary = overview.whatsappAccounts.find((a) => a.status === "CONNECTED") ?? overview.whatsappAccounts[0];
+  const whatsapp = primary ? ACCOUNT_STATUS[primary.status] : null;
 
   const checklist: { label: string; done: boolean; note?: string; href?: string }[] = [
     { label: "Create your workspace", done: true },
     { label: "Add business details", done: stepIndex > 0 },
-    { label: "Connect a WhatsApp number", done: false, note: "Not available in this build yet" },
+    {
+      label: "Connect a WhatsApp number",
+      done: overview.whatsappAccounts.some((a) => a.status === "CONNECTED"),
+      href: `/w/${slug}/settings/whatsapp`,
+    },
     { label: "Import contacts", done: (overview.contactCount ?? 0) > 0, href: `/w/${slug}/contacts/import` },
     { label: "Create or select an approved template", done: false, note: "Not available in this build yet" },
     { label: "Send your first campaign", done: false, note: "Not available in this build yet" },
@@ -87,7 +94,13 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">WhatsApp</dt>
               <dd>
-                <Badge variant="secondary">Not connected</Badge>
+                {whatsapp ? (
+                  <Link href={`/w/${slug}/settings/whatsapp`}>
+                    <Badge variant={whatsapp.tone}>{whatsapp.label}</Badge>
+                  </Link>
+                ) : (
+                  <Badge variant="secondary">Not connected</Badge>
+                )}
               </dd>
               {overview.contactCount !== null && (
                 <>

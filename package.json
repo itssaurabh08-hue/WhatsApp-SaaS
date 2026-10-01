@@ -21,12 +21,17 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "worker": "tsx --conditions=react-server worker/index.ts",
+    "build:worker": "esbuild worker/index.ts --bundle --platform=node --target=node22 --format=esm --conditions=react-server --packages=external --tsconfig=tsconfig.json --outfile=dist/worker.mjs --log-level=warning",
+    "codespace": "bash scripts/codespace-start.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1144.0",
     "@node-rs/argon2": "^2.2.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "bullmq": "^6.3.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "ioredis": "^6.0.0",

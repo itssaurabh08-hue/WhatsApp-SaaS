@@ -18,6 +18,16 @@ export const TENANT_MODELS = new Set<string>([
   "Segment",
   "ImportJob",
   "ImportRowError",
+  "Credential",
+  "WhatsAppAccount",
+  "Template",
+  "Conversation",
+  "ConversationNote",
+  "Message",
+  "MessageEvent",
+  "MediaObject",
+  "Campaign",
+  "CampaignRecipient",
 ]);
 
 export class TenantScopeError extends Error {

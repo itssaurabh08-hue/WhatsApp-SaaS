@@ -12,5 +12,12 @@ export function applyTestEnv() {
     EMAIL_PROVIDER: "memory",
     RATE_LIMIT_DISABLED: "true",
     LOG_LEVEL: "silent",
+    QUEUE_PREFIX: "whatsflow-test",
+    ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+    WHATSAPP_APP_ID: "1234567890",
+    WHATSAPP_APP_SECRET: "test-app-secret",
+    WHATSAPP_CONFIG_ID: "987654321",
+    WHATSAPP_VERIFY_TOKEN: "test-verify-token",
+    WHATSAPP_GRAPH_API_VERSION: "v25.0",
   });
 }

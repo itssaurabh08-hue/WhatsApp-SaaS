@@ -146,9 +146,13 @@ export async function advanceOnboarding(ctx: TenantContext, to: OnboardingStepNa
 
 export async function getWorkspaceOverview(ctx: TenantContext) {
   requirePermission(ctx, "workspace:read");
-  const [memberCount, contactCount, recentAudit] = await Promise.all([
+  const [memberCount, contactCount, whatsappAccounts, recentAudit] = await Promise.all([
     db.workspaceMember.count({ where: { workspaceId: ctx.workspaceId } }),
     can(ctx, "contacts:read") ? db.contact.count({ where: { workspaceId: ctx.workspaceId } }) : Promise.resolve(null),
+    db.whatsAppAccount.findMany({
+      where: { workspaceId: ctx.workspaceId, status: { not: "DISCONNECTED" } },
+      select: { status: true, displayPhoneNumber: true },
+    }),
     can(ctx, "audit:read")
       ? db.auditLog.findMany({
           where: { workspaceId: ctx.workspaceId },
@@ -158,5 +162,5 @@ export async function getWorkspaceOverview(ctx: TenantContext) {
         })
       : Promise.resolve(null),
   ]);
-  return { memberCount, contactCount, recentAudit };
+  return { memberCount, contactCount, whatsappAccounts, recentAudit };
 }

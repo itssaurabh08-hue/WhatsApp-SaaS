@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_ENV, E2E_PORT } from "./tests/e2e/support/env";
+import { E2E_ENV, E2E_PORT, E2E_WORKER_HEALTH_PORT } from "./tests/e2e/support/env";
 
 /**
  * E2E tests run against a production build (`npm run build` first) backed by a
@@ -25,11 +25,21 @@ export default defineConfig({
       testMatch: /responsive/,
     },
   ],
-  webServer: {
-    command: `npx next start -p ${E2E_PORT}`,
-    url: `http://localhost:${E2E_PORT}/api/health`,
-    reuseExistingServer: false,
-    timeout: 120_000,
-    env: E2E_ENV,
-  },
+  webServer: [
+    {
+      command: `npx next start -p ${E2E_PORT}`,
+      url: `http://localhost:${E2E_PORT}/api/health`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: E2E_ENV,
+    },
+    {
+      // Background worker: processes webhooks and sends messages.
+      command: "npx tsx --conditions=react-server worker/index.ts",
+      url: `http://127.0.0.1:${E2E_WORKER_HEALTH_PORT}/`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: { ...E2E_ENV, WORKER_HEALTH_PORT: String(E2E_WORKER_HEALTH_PORT) },
+    },
+  ],
 });

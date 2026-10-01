@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16 via Prisma 7. Phase 1 and Phase 2 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
+PostgreSQL 16 via Prisma 7. Phase 1, 2 and 3 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
 
 ## Conventions
 
@@ -37,7 +37,29 @@ PostgreSQL 16 via Prisma 7. Phase 1 and Phase 2 models are implemented in `prism
 | ImportJob, ImportRowError      | Raw CSV kept until the import runs, then cleared; failed rows kept for the report.                                                                                                                                                                                               |
 | Workspace.defaultCountry       | ISO 3166-1 alpha-2 for national phone numbers.                                                                                                                                                                                                                                   |
 
-The Phase 2 rows in the table below are superseded by this section.
+## Phase 3 models (implemented)
+
+| Model           | Notes                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential      | AES-256-GCM ciphertext, iv, auth tag, key id. Tenant-guarded.                                                                                                                                             |
+| WhatsAppAccount | WABA ID, globally unique `phoneNumberId`, status (`PENDING_SETUP`, `CONNECTED`, `NEEDS_RECONNECT`, `RESTRICTED`, `DISCONNECTED`), quality, messaging limit, name status, refs to encrypted token and PIN. |
+| WebhookEvent    | One row per change; unique (`provider`, `dedupeKey`); status `RECEIVED`/`PROCESSED`/`DEFERRED`/`IGNORED`/`FAILED`; nullable `workspaceId` (events for unknown numbers are kept for debugging).            |
+| ProviderApiLog  | Meta call metadata only (operation, path, status, Meta error code, fbtrace id, duration, request id).                                                                                                     |
+
+## Phase 4 models (implemented)
+
+| Model            | Notes                                                                                                                                                                                                                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Template         | Belongs to a WhatsApp Business Account: unique (`workspaceId`, `businessAccountId`, `name`, `language`). `status` mirrors Meta (`PENDING`, `APPROVED`, `REJECTED`, `PAUSED`, ...), `parameterFormat` `POSITIONAL`/`NAMED`, `components` JSON in Meta's format, `providerTemplateId`, `rejectionReason`.         |
+| Conversation     | One per contact per business number: unique (`workspaceId`, `contactId`, `whatsappAccountId`). `status` `OPEN`/`PENDING`/`CLOSED`, `assignedUserId`, `unreadCount`, `lastInboundAt` (customer service window), `lastMessageAt`, `lastMessagePreview`.                                                           |
+| ConversationNote | Internal team notes. Separate table so notes can never reach the send path.                                                                                                                                                                                                                                     |
+| Message          | Direction, type, body, media, template and values, `contextMessageId`, unique (`workspaceId`, `whatsappMessageId`) and (`workspaceId`, `idempotencyKey`), status (`QUEUED`, `SENDING`, `ACCEPTED`, `SENT`, `DELIVERED`, `READ`, `FAILED`, `RECEIVED`), error code and user-safe message, per-status timestamps. |
+| MessageEvent     | Immutable status history, unique (`messageId`, `type`); Meta's `pricing` object is kept for analytics.                                                                                                                                                                                                          |
+| MediaObject      | Storage key, mime type, size, sha256, Meta media id (with uploading number and time for reuse), status `PENDING`/`STORED`/`FAILED`.                                                                                                                                                                             |
+
+Migration `messaging` creates these tables and enums with indexes on `Conversation(workspaceId, status, lastMessageAt desc)`, `Conversation(workspaceId, assignedUserId, lastMessageAt desc)`, `Message(conversationId, createdAt)`, `Message(workspaceId, createdAt desc)`, `Message(workspaceId, status)`, `MessageEvent(workspaceId, type, occurredAt)`, `Template(workspaceId, status)`, `Template(providerTemplateId)`, `MediaObject(workspaceId, createdAt desc)`. All six models are in `TENANT_MODELS`.
+
+The Phase 2, 3 and 4 rows in the table below are superseded by these sections.
 
 ## Later-phase models
 

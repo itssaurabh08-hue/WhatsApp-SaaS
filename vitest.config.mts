@@ -17,7 +17,7 @@ export default defineConfig({
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
           environment: "node",
-          env: { AUTH_SECRET: "unit-test-auth-secret-at-least-32-characters" },
+          env: { AUTH_SECRET: "unit-test-auth-secret-at-least-32-characters", LOG_LEVEL: "silent" },
         },
       },
       {

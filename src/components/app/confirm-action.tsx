@@ -50,7 +50,16 @@ export function ConfirmAction({
             onClick={() =>
               start(async () => {
                 try {
-                  await action();
+                  const result = await action();
+                  // Actions may return { ok, message } to report the outcome.
+                  if (result && typeof result === "object" && "ok" in result) {
+                    const r = result as { ok: boolean; message?: string };
+                    if (!r.ok) {
+                      toast.error(r.message ?? "That did not work. Please try again.");
+                      return;
+                    }
+                    if (r.message) toast.success(r.message);
+                  }
                   setOpen(false);
                 } catch (error) {
                   // Redirects thrown by server actions must propagate.

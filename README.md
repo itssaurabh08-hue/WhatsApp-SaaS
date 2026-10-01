@@ -2,17 +2,22 @@
 
 Multi-tenant SaaS for businesses to send, receive, automate and analyze WhatsApp Business messages using only the official Meta WhatsApp Business Platform (Cloud API).
 
-**Status:** Phases 1 and 2 of 10 are complete: project setup, authentication, workspaces, permissions, the app shell, and contact management (contacts, tags, lists, custom fields, segments, CSV import and export). WhatsApp messaging, campaigns and later features are not built yet. See [the roadmap](docs/ROADMAP.md).
+**Status:** Phases 1 to 3 of 10 are complete: accounts, workspaces, permissions, contact management, and connecting WhatsApp Business numbers through Meta's Embedded Signup with signed, deduplicated webhooks. Sending and receiving messages (inbox, templates) is Phase 4. See [the roadmap](docs/ROADMAP.md).
 
 The product name and branding live in [`src/config/brand.ts`](src/config/brand.ts) and can be overridden with `NEXT_PUBLIC_BRAND_*` environment variables.
 
 ## Documentation
+
+- `docs/CODESPACES.md`: run the app in GitHub Codespaces for free testing.
+- `docs/DEPLOY_RENDER.md`: put the app online for free on Render (testing).
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database schema](docs/DATABASE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Phase 1 report](docs/phase-reports/PHASE-1.md)
 - [Phase 2 report](docs/phase-reports/PHASE-2.md)
+- [Phase 3 report](docs/phase-reports/PHASE-3.md)
+- [Meta setup guide (platform owner)](docs/META_SETUP_GUIDE.md)
 - [Meta API items requiring verification](docs/META_API_VERIFICATION.md)
 
 ## Requirements
@@ -29,7 +34,10 @@ docker compose up -d        # postgres, redis, minio, mailpit
 npm run db:migrate          # apply migrations to the dev database
 npm run db:seed             # optional: demo workspace and users (development only)
 npm run dev                 # http://localhost:3000
+npm run worker              # in a second terminal: background jobs (webhook processing)
 ```
+
+WhatsApp is optional in development. To enable it, follow [docs/META_SETUP_GUIDE.md](docs/META_SETUP_GUIDE.md) and set the `WHATSAPP_*` and `ENCRYPTION_KEY` values. Meta's sign-up window and webhooks need a public HTTPS address.
 
 Emails sent in development (verification, password reset) are captured by Mailpit at http://localhost:8025.
 
@@ -74,7 +82,9 @@ E2E tests start their own SMTP sink on port 2525 and the app on port 3100.
 
 ```bash
 docker build -t whatsflow-web .
+docker build --target worker -t whatsflow-worker .
 docker run --env-file .env -p 3000:3000 whatsflow-web
+docker run --env-file .env whatsflow-worker
 ```
 
 Run `npx prisma migrate deploy` against the target database before starting a new version. The container exposes `/api/health` for health checks.

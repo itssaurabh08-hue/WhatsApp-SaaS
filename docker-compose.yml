@@ -31,7 +31,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # S3-compatible object storage for media and CSV files (used from Phase 2).
+  # S3-compatible object storage for media files (set STORAGE_DRIVER=s3 to use it).
   minio:
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
@@ -43,6 +43,14 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
+
+  # Creates the media bucket once MinIO is up.
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 whatsflow whatsflow-secret; do sleep 1; done;
+      mc mb --ignore-existing local/whatsflow"
 
   # Catches all outgoing email in development. Web UI: http://localhost:8025
   mailpit:

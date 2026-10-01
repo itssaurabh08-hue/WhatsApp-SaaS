@@ -27,7 +27,21 @@ export type AuditAction =
   | "segment.updated"
   | "segment.deleted"
   | "custom_field.created"
-  | "custom_field.deleted";
+  | "custom_field.deleted"
+  | "whatsapp.connected"
+  | "whatsapp.setup_failed"
+  | "whatsapp.disconnected"
+  | "template.created"
+  | "template.deleted"
+  | "templates.synced"
+  | "conversation.assigned"
+  | "conversation.status_changed"
+  | "campaign.created"
+  | "campaign.launched"
+  | "campaign.paused"
+  | "campaign.resumed"
+  | "campaign.cancelled"
+  | "campaign.deleted";
 
 export interface AuditEntry {
   action: AuditAction;
