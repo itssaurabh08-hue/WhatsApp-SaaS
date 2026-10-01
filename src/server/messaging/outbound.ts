@@ -438,7 +438,9 @@ export async function reconcileOutbound(now = new Date()) {
     take: 500,
   });
   if (stuckQueued.length > 0) {
-    await enqueueOutboundMessages(stuckQueued.map((m) => ({ messageId: m.id, whatsappAccountId: m.whatsappAccountId })));
+    await enqueueOutboundMessages(
+      stuckQueued.map((m) => ({ messageId: m.id, whatsappAccountId: m.whatsappAccountId })),
+    );
   }
 
   const unconfirmed = await systemDb.message.findMany({

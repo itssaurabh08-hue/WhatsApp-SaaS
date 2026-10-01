@@ -30,4 +30,3 @@ export function eligibleOptIn(category: string, includeUnknownOptIn: boolean): P
   if (category === "MARKETING" && !includeUnknownOptIn) return { optInStatus: "OPTED_IN" };
   return { optInStatus: { not: "OPTED_OUT" } };
 }
-
