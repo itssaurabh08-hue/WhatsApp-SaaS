@@ -1,5 +1,6 @@
 export const E2E_PORT = Number(process.env.E2E_PORT ?? 3100);
 export const SMTP_SINK_PORT = Number(process.env.E2E_SMTP_PORT ?? 2525);
+export const E2E_WORKER_HEALTH_PORT = Number(process.env.E2E_WORKER_HEALTH_PORT ?? 3101);
 export const FAKE_GRAPH_PORT = Number(process.env.E2E_FAKE_GRAPH_PORT ?? 2626);
 export const E2E_APP_SECRET = "e2e-meta-app-secret";
 export const E2E_VERIFY_TOKEN = "e2e-verify-token";
@@ -26,4 +27,6 @@ export const E2E_ENV: Record<string, string> = {
   WHATSAPP_VERIFY_TOKEN: E2E_VERIFY_TOKEN,
   WHATSAPP_GRAPH_BASE_URL: `http://127.0.0.1:${FAKE_GRAPH_PORT}`,
   LOG_LEVEL: "warn",
+  STORAGE_DRIVER: "local",
+  STORAGE_LOCAL_DIR: "test-results/e2e-storage",
 };

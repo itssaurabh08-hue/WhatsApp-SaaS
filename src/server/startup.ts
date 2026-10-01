@@ -23,5 +23,8 @@ export function validateStartup() {
       "ENCRYPTION_KEY must be set (32 bytes, base64) when WhatsApp is configured: access tokens are stored encrypted.",
     );
   }
+  const storage = process.env.STORAGE_DRIVER || "local";
+  if (storage !== "local" && storage !== "s3") throw new Error('STORAGE_DRIVER must be "local" or "s3"');
+  if (storage === "s3" && !process.env.S3_BUCKET) throw new Error("S3_BUCKET is required when STORAGE_DRIVER=s3");
   logger.info({ nodeEnv: config.NODE_ENV, appUrl: config.APP_URL, whatsappEnabled }, "configuration validated");
 }

@@ -216,6 +216,8 @@ export class MetaApiError extends Error {
     readonly subcode: number | null,
     readonly metaMessage: string,
     readonly fbtraceId: string | null,
+    /** No response, and Meta may have received the request. Re-sending could duplicate a message. */
+    readonly ambiguous = false,
   ) {
     super(`Meta API ${operation} failed (http ${httpStatus ?? "none"}, code ${code ?? "none"}): ${metaMessage}`);
     this.name = "MetaApiError";

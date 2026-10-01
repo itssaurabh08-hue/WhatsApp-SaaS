@@ -3,18 +3,18 @@ import type { WebhookEventStatus } from "@/generated/prisma/client";
 import { systemDb } from "@/server/db/client";
 import { logger } from "@/server/logging/logger";
 
-interface StoredPayload {
-  businessAccountId: string | null;
-  phoneNumberId: string | null;
-  value: Record<string, unknown>;
-}
+import { handleMessagesField, handleTemplateStatus, type StoredPayload } from "@/server/messaging/inbound";
 
 type Outcome = { status: WebhookEventStatus; note?: string };
 
-/** Fields whose handlers arrive in later phases; events are kept and replayed then. */
-const DEFERRED_FIELDS = new Set([
-  "messages",
-  "message_template_status_update",
+/**
+ * Fields stored without a handler. Events in DEFERRED state are replayed by the
+ * worker once a handler for their field exists (see findDeferredEvents).
+ */
+const DEFERRED_FIELDS = new Set<string>([]);
+
+/** Template fields we receive but do not use (quality and category changes are visible in WhatsApp Manager). */
+const UNUSED_FIELDS = new Set([
   "message_template_quality_update",
   "message_template_components_update",
   "template_category_update",
@@ -126,7 +126,12 @@ async function handleUserPreferences(workspaceId: string, p: StoredPayload): Pro
 async function dispatch(eventType: string, workspaceId: string | null, payload: StoredPayload): Promise<Outcome> {
   if (!workspaceId) return { status: "IGNORED", note: "no connected WhatsApp account matches this event" };
   if (DEFERRED_FIELDS.has(eventType)) return { status: "DEFERRED", note: "handler not implemented yet" };
+  if (UNUSED_FIELDS.has(eventType)) return { status: "IGNORED", note: `${eventType} is not used` };
   switch (eventType) {
+    case "messages":
+      return handleMessagesField(workspaceId, payload);
+    case "message_template_status_update":
+      return handleTemplateStatus(workspaceId, payload);
     case "account_update":
       return handleAccountUpdate(workspaceId, payload);
     case "phone_number_quality_update":
@@ -146,7 +151,11 @@ async function dispatch(eventType: string, workspaceId: string | null, payload: 
 export async function processWebhookEvent(eventId: string): Promise<WebhookEventStatus | "MISSING"> {
   const event = await systemDb.webhookEvent.findUnique({ where: { id: eventId } });
   if (!event) return "MISSING";
-  if (event.status !== "RECEIVED" && event.status !== "FAILED") return event.status;
+  const replayable =
+    event.status === "RECEIVED" ||
+    event.status === "FAILED" ||
+    (event.status === "DEFERRED" && !DEFERRED_FIELDS.has(event.eventType));
+  if (!replayable) return event.status;
   await systemDb.webhookEvent.update({ where: { id: eventId }, data: { attempts: { increment: 1 } } });
   try {
     const outcome = await dispatch(event.eventType, event.workspaceId, event.payload as unknown as StoredPayload);
@@ -169,6 +178,17 @@ export async function processWebhookEvent(eventId: string): Promise<WebhookEvent
 export async function findUnprocessedEvents(olderThanMs = 60_000, limit = 500) {
   const rows = await systemDb.webhookEvent.findMany({
     where: { status: "RECEIVED", createdAt: { lt: new Date(Date.now() - olderThanMs) } },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/** Ids of DEFERRED events whose field now has a handler, oldest first (replayed in arrival order). */
+export async function findDeferredEvents(limit = 200) {
+  const rows = await systemDb.webhookEvent.findMany({
+    where: { status: "DEFERRED", eventType: { notIn: [...DEFERRED_FIELDS] } },
     orderBy: { createdAt: "asc" },
     take: limit,
     select: { id: true },

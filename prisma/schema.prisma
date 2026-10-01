@@ -1,6 +1,7 @@
 // Phase 1: identity, sessions, workspaces, membership, audit.
 // Phase 2: contacts, tags, lists, notes, custom fields, segments, CSV imports.
 // Phase 3: WhatsApp accounts (Embedded Signup), encrypted credentials, webhooks.
+// Phase 4: templates, conversations, messages, message events, media.
 // See docs/DATABASE.md.
 
 generator client {
@@ -59,7 +60,7 @@ enum WhatsAppAccountStatus {
 enum WebhookEventStatus {
   RECEIVED
   PROCESSED
-  // Stored but no handler exists yet (e.g. messages before Phase 4); replayable later.
+  // Stored but no handler existed when it arrived; replayed once a handler exists.
   DEFERRED
   IGNORED
   FAILED
@@ -95,6 +96,10 @@ model User {
   contactNotes            ContactNote[]
   importJobs              ImportJob[]
   whatsAppAccounts        WhatsAppAccount[]
+  templatesCreated        Template[]
+  assignedConversations   Conversation[]
+  conversationNotes       ConversationNote[]
+  messagesSent            Message[]
 }
 
 // Reserved for Google/Microsoft/SSO login. Not used in Phase 1.
@@ -170,23 +175,29 @@ model Workspace {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  members          WorkspaceMember[]
-  invites          WorkspaceInvite[]
-  auditLogs        AuditLog[]
-  contacts         Contact[]
-  tags             Tag[]
-  contactTags      ContactTag[]
-  contactLists     ContactList[]
-  listMembers      ContactListMember[]
-  contactNotes     ContactNote[]
-  customFields     CustomFieldDefinition[]
-  segments         Segment[]
-  importJobs       ImportJob[]
-  importRowErrors  ImportRowError[]
-  credentials      Credential[]
-  whatsAppAccounts WhatsAppAccount[]
-  webhookEvents    WebhookEvent[]
-  providerApiLogs  ProviderApiLog[]
+  members           WorkspaceMember[]
+  invites           WorkspaceInvite[]
+  auditLogs         AuditLog[]
+  contacts          Contact[]
+  tags              Tag[]
+  contactTags       ContactTag[]
+  contactLists      ContactList[]
+  listMembers       ContactListMember[]
+  contactNotes      ContactNote[]
+  customFields      CustomFieldDefinition[]
+  segments          Segment[]
+  importJobs        ImportJob[]
+  importRowErrors   ImportRowError[]
+  credentials       Credential[]
+  whatsAppAccounts  WhatsAppAccount[]
+  webhookEvents     WebhookEvent[]
+  providerApiLogs   ProviderApiLog[]
+  templates         Template[]
+  conversations     Conversation[]
+  conversationNotes ConversationNote[]
+  messages          Message[]
+  messageEvents     MessageEvent[]
+  mediaObjects      MediaObject[]
 }
 
 model WorkspaceMember {
@@ -269,10 +280,12 @@ model Contact {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tags      ContactTag[]
-  lists     ContactListMember[]
-  notes     ContactNote[]
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tags          ContactTag[]
+  lists         ContactListMember[]
+  notes         ContactNote[]
+  conversations Conversation[]
+  messages      Message[]
 
   @@unique([workspaceId, normalizedPhoneNumber])
   @@index([workspaceId, createdAt(sort: Desc), id])
@@ -471,8 +484,10 @@ model WhatsAppAccount {
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connectedBy User?     @relation(fields: [connectedById], references: [id], onDelete: SetNull)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connectedBy   User?          @relation(fields: [connectedById], references: [id], onDelete: SetNull)
+  conversations Conversation[]
+  messages      Message[]
 
   @@index([workspaceId])
   @@index([businessAccountId])
@@ -523,4 +538,237 @@ model ProviderApiLog {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([whatsappAccountId, createdAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: templates, inbox, messaging, media
+// ---------------------------------------------------------------------------
+
+enum TemplateCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+}
+
+// Meta's template statuses (WA/reference/whatsapp-business-account/message-template-api),
+// plus DRAFT for templates not yet submitted. Only APPROVED templates can be sent.
+enum TemplateStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  PAUSED
+  DISABLED
+  FLAGGED
+  IN_APPEAL
+  ARCHIVED
+  LIMIT_EXCEEDED
+  LOCKED
+  PENDING_DELETION
+  DELETED
+  UNKNOWN
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// Outbound progresses QUEUED -> SENDING -> ACCEPTED -> SENT -> DELIVERED -> READ, or ends FAILED.
+// ACCEPTED means Meta's API accepted the request; SENT/DELIVERED/READ come only from status webhooks.
+enum MessageStatus {
+  QUEUED
+  SENDING
+  ACCEPTED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum MediaStatus {
+  PENDING
+  STORED
+  FAILED
+}
+
+// A template belongs to a WhatsApp Business Account (WABA), so it is keyed by businessAccountId.
+model Template {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  businessAccountId  String
+  providerTemplateId String?
+  name               String
+  language           String
+  category           TemplateCategory
+  status             TemplateStatus   @default(DRAFT)
+  // "POSITIONAL" ({{1}}) or "NAMED" ({{first_name}})
+  parameterFormat    String           @default("POSITIONAL")
+  // Meta's component array (HEADER, BODY, FOOTER, BUTTONS), as submitted or synced.
+  components         Json
+  rejectionReason    String?
+  lastSyncedAt       DateTime?
+  createdById        String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  messages  Message[]
+
+  @@unique([workspaceId, businessAccountId, name, language])
+  @@index([workspaceId, status])
+  @@index([providerTemplateId])
+}
+
+// One thread per contact per business phone number.
+model Conversation {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  contactId          String
+  whatsappAccountId  String
+  status             ConversationStatus @default(OPEN)
+  assignedUserId     String?
+  unreadCount        Int                @default(0)
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  // Last customer message; the 24-hour customer service window runs from here.
+  lastInboundAt      DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact         Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  whatsappAccount WhatsAppAccount    @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  assignedUser    User?              @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages        Message[]
+  notes           ConversationNote[]
+
+  @@unique([workspaceId, contactId, whatsappAccountId])
+  @@index([workspaceId, status, lastMessageAt(sort: Desc)])
+  @@index([workspaceId, assignedUserId, lastMessageAt(sort: Desc)])
+}
+
+// Internal team notes. Stored apart from Message so they can never reach the send path.
+model ConversationNote {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  authorId       String?
+  body           String
+  createdAt      DateTime @default(now())
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, conversationId, createdAt])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  workspaceId       String
+  conversationId    String
+  contactId         String
+  whatsappAccountId String
+  direction         MessageDirection
+  // text, image, video, audio, document, sticker, location, contacts, interactive, button, reaction, template, unsupported
+  type              String
+  // Text, caption, or the rendered template text.
+  body              String?
+  mediaObjectId     String?
+  templateId        String?
+  // { header?, body?, buttons? } values used to fill the template
+  templateParams    Json?
+  // Type-specific extra details (location, reply ids, shared contacts).
+  payload           Json?
+  // wamid of the message this replies to or reacts to.
+  contextMessageId  String?
+  whatsappMessageId String?
+  // Client-supplied key that makes a send request safe to repeat.
+  idempotencyKey    String?
+  status            MessageStatus
+  errorCode         Int?
+  errorMessage      String?
+  attempts          Int              @default(0)
+  sentById          String?
+  queuedAt          DateTime?
+  acceptedAt        DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedAt          DateTime?
+  // Inbound: the customer's send time from the webhook.
+  receivedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation    Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact         Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  template        Template?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  mediaObject     MediaObject?    @relation(fields: [mediaObjectId], references: [id], onDelete: SetNull)
+  sentBy          User?           @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  events          MessageEvent[]
+
+  @@unique([workspaceId, whatsappMessageId])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, status])
+}
+
+// Immutable record of each status change, from Meta's webhooks or our send attempts.
+// Analytics are computed from these rows. One row per message and type.
+model MessageEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  messageId   String
+  // QUEUED, ACCEPTED, SENT, DELIVERED, READ, PLAYED, FAILED, RECEIVED
+  type        String
+  occurredAt  DateTime
+  errorCode   Int?
+  errorTitle  String?
+  // Meta's pricing object on status webhooks (category, type), when present.
+  pricing     Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, type])
+  @@index([workspaceId, type, occurredAt])
+}
+
+// A file in object storage: received from customers or uploaded by the team.
+model MediaObject {
+  id                 String      @id @default(cuid())
+  workspaceId        String
+  storageKey         String?
+  mimeType           String
+  size               Int?
+  fileName           String?
+  sha256             String?
+  // Meta media id (incoming: from the webhook; outgoing: from the upload API).
+  providerMediaId    String?
+  // Outgoing uploads: which business number uploaded it and when (ids are valid for 30 days).
+  providerPhoneId    String?
+  providerUploadedAt DateTime?
+  status             MediaStatus @default(PENDING)
+  error              String?
+  uploadedById       String?
+  createdAt          DateTime    @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }

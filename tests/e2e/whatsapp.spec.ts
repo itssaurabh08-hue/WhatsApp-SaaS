@@ -1,59 +1,7 @@
 import { createHmac } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
-import { waitForEmailLink } from "./support/emails";
+import { expect, test } from "@playwright/test";
 import { E2E_APP_SECRET, E2E_VERIFY_TOKEN } from "./support/env";
-import { E2E_PHONE_ID, E2E_WABA_ID } from "./support/fake-graph-server";
-import { unique } from "./support/session";
-
-/**
- * Stand-ins for Meta's browser side: a fake SDK whose FB.login opens a
- * facebook.com frame that posts the Embedded Signup session info (as Meta's
- * popup does), then returns a code to the callback.
- */
-async function fakeFacebook(page: Page) {
-  await page.route("https://connect.facebook.net/**", (route) =>
-    route.fulfill({
-      contentType: "application/javascript",
-      body: `
-        window.FB = {
-          init: function () {},
-          login: function (cb, opts) {
-            window.__fbLoginOpts = opts;
-            var f = document.createElement("iframe");
-            f.style.display = "none";
-            f.src = "https://www.facebook.com/__fake_embedded_signup";
-            document.body.appendChild(f);
-            setTimeout(function () { cb({ authResponse: { code: "AQB-fake-code-123456" } }); }, 400);
-          }
-        };
-        window.fbAsyncInit && window.fbAsyncInit();`,
-    }),
-  );
-  await page.route("https://www.facebook.com/__fake_embedded_signup", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: `<script>parent.postMessage(JSON.stringify({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH",
-        data: { waba_id: "${E2E_WABA_ID}", phone_number_id: "${E2E_PHONE_ID}", business_id: "2729063490586005" } }), "*");</script>`,
-    }),
-  );
-}
-
-async function verifiedOwner(page: Page) {
-  const email = `wa-${unique()}@example.com`;
-  await page.goto("/signup");
-  await page.getByLabel("Your name").fill("Wa Owner");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("Password").fill("a-very-long-password");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.getByLabel("Workspace name").fill(`WA ${unique()}`);
-  await page.getByRole("button", { name: "Create workspace" }).click();
-  await expect(page).toHaveURL(/\/setup$/);
-  const slug = new URL(page.url()).pathname.split("/")[2]!;
-  await page.goto(await waitForEmailLink(email, "/verify-email"));
-  await page.getByRole("button", { name: "Verify my email" }).click();
-  await expect(page.getByText("Your email address is verified.")).toBeVisible();
-  return slug;
-}
+import { fakeFacebook, verifiedOwner } from "./support/whatsapp";
 
 test("connect WhatsApp with Embedded Signup end to end", async ({ page }) => {
   await fakeFacebook(page);

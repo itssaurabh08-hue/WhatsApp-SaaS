@@ -32,7 +32,7 @@ export class FakeMeta {
       method: init?.method ?? "GET",
       path,
       query: url.searchParams,
-      body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : init?.body instanceof FormData ? init.body : null,
       authorization: (init?.headers as Record<string, string> | undefined)?.Authorization ?? null,
     };
     this.calls.push(call);
@@ -85,4 +85,64 @@ export function happyMeta() {
         throughput: { level: "STANDARD" },
       },
     }));
+}
+
+let wamidCounter = 0;
+
+/** Adds messaging, media and template endpoints to a fake (documented response shapes). */
+export function withMessaging(fake: FakeMeta) {
+  return fake
+    .on("POST", new RegExp(`^/${PHONE_ID}/messages$`), (call) => ({
+      json: {
+        messaging_product: "whatsapp",
+        contacts: [{ input: (call.body as { to: string }).to, wa_id: "16505551234" }],
+        messages: [{ id: `wamid.fake${++wamidCounter}`, message_status: "accepted" }],
+      },
+    }))
+    .on("POST", new RegExp(`^/${PHONE_ID}/media$`), () => ({ json: { id: "1037543291543636" } }))
+    .on("GET", /^\/media123$/, () => ({
+      json: {
+        messaging_product: "whatsapp",
+        url: "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=123",
+        mime_type: "image/jpeg",
+        sha256: "abc",
+        file_size: "4",
+        id: "media123",
+      },
+    }))
+    .on("GET", /^\/whatsapp_business\/attachments\/$/, () => ({ text: "JPEG" }))
+    .on("POST", new RegExp(`^/${WABA_ID}/message_templates$`), () => ({
+      json: { id: "546151681022936", status: "PENDING", category: "UTILITY" },
+    }))
+    .on("GET", new RegExp(`^/${WABA_ID}/message_templates$`), () => ({
+      json: {
+        data: [
+          {
+            name: "order_update",
+            parameter_format: "POSITIONAL",
+            components: [
+              { type: "BODY", text: "Hi {{1}}, order {{2}} has shipped.", example: { body_text: [["Ana", "A1"]] } },
+            ],
+            language: "en_US",
+            status: "APPROVED",
+            category: "UTILITY",
+            id: "1001",
+          },
+          {
+            name: "spring_sale",
+            parameter_format: "NAMED",
+            components: [
+              { type: "BODY", text: "Hi {{first_name}}, our sale starts now!" },
+              { type: "BUTTONS", buttons: [{ type: "URL", text: "Shop", url: "https://shop.example.com/{{1}}" }] },
+            ],
+            language: "en",
+            status: "APPROVED",
+            category: "MARKETING",
+            id: "1002",
+          },
+        ],
+        paging: { cursors: { before: "a", after: "b" } },
+      },
+    }))
+    .on("DELETE", new RegExp(`^/${WABA_ID}/message_templates$`), () => ({ json: { success: true } }));
 }

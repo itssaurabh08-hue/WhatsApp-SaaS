@@ -39,6 +39,15 @@ async function recordToDatabase(entry: ApiCallRecord) {
     .catch((err: unknown) => logger.error({ err }, "provider log write failed"));
 }
 
+/**
+ * True when the request certainly never reached Meta (DNS failure, connection refused),
+ * so repeating it cannot cause a duplicate. Timeouts and resets are ambiguous.
+ */
+function requestNeverSent(error: unknown): boolean {
+  const cause = (error as { cause?: { code?: string } })?.cause;
+  return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(cause?.code ?? "");
+}
+
 export interface CallContext {
   operation: string;
   accessToken?: string;
@@ -75,7 +84,7 @@ export class GraphClient {
     method: "GET" | "POST" | "DELETE",
     path: string,
     ctx: CallContext,
-    options: { query?: Record<string, string>; body?: unknown; raw?: boolean } = {},
+    options: { query?: Record<string, string>; body?: unknown; form?: FormData; raw?: boolean } = {},
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}/${this.config.apiVersion}${path}`);
     for (const [k, v] of Object.entries(options.query ?? {})) url.searchParams.set(k, v);
@@ -85,6 +94,7 @@ export class GraphClient {
       url.searchParams.set("appsecret_proof", this.appSecretProof(ctx.accessToken));
     }
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
+    const body = options.form ?? (options.body === undefined ? undefined : JSON.stringify(options.body));
 
     const started = Date.now();
     let response: Response | null = null;
@@ -94,7 +104,7 @@ export class GraphClient {
       response = await this.fetchImpl(url.toString(), {
         method,
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body,
         signal: AbortSignal.timeout(this.config.timeoutMs ?? 15_000),
       });
       text = await response.text();
@@ -105,7 +115,7 @@ export class GraphClient {
       }
     } catch (error) {
       await this.log(ctx, method, path, null, false, Date.now() - started, null, null, (error as Error).message, null);
-      throw new MetaApiError(ctx.operation, null, null, null, (error as Error).message, null);
+      throw new MetaApiError(ctx.operation, null, null, null, (error as Error).message, null, !requestNeverSent(error));
     }
 
     const errorObj = (
@@ -121,6 +131,45 @@ export class GraphClient {
     }
     await this.log(ctx, method, path, response.status, true, Date.now() - started, null, null, null, null);
     return (options.raw ? text : parsed) as T;
+  }
+
+  /**
+   * Downloads a media file from a Meta media URL (WA/business-phone-numbers/media#download-media).
+   * The URL is not a Graph path and needs the bearer token. Rejects files larger than maxBytes.
+   */
+  async download(
+    mediaUrl: string,
+    ctx: CallContext & { accessToken: string },
+    maxBytes: number,
+  ): Promise<{ data: Buffer; contentType: string | null }> {
+    const started = Date.now();
+    const path = "<media-url>";
+    let response: Response;
+    try {
+      response = await this.fetchImpl(mediaUrl, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${ctx.accessToken}` },
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 60_000),
+      });
+    } catch (error) {
+      await this.log(ctx, "GET", path, null, false, Date.now() - started, null, null, (error as Error).message, null);
+      throw new MetaApiError(ctx.operation, null, null, null, (error as Error).message, null);
+    }
+    if (!response.ok) {
+      await this.log(ctx, "GET", path, response.status, false, Date.now() - started, null, null, null, null);
+      throw new MetaApiError(ctx.operation, response.status, null, null, `HTTP ${response.status}`, null);
+    }
+    const declared = Number(response.headers.get("content-length") ?? 0);
+    if (declared > maxBytes) {
+      await response.body?.cancel();
+      throw new MetaApiError(ctx.operation, response.status, null, null, "media file too large", null);
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length > maxBytes) {
+      throw new MetaApiError(ctx.operation, response.status, null, null, "media file too large", null);
+    }
+    await this.log(ctx, "GET", path, response.status, true, Date.now() - started, null, null, null, null);
+    return { data, contentType: response.headers.get("content-type") };
   }
 
   private async log(

@@ -7,7 +7,7 @@ Each phase ends with: tests, lint, typecheck, migration check, manual verificati
 | 1     | Project setup, DB, auth, workspaces, UI shell                               | **Done** (2026-10-01). See [Phase 1 report](phase-reports/PHASE-1.md)               |
 | 2     | Contacts, tags, lists, segments, CSV import/export                          | **Done** (2026-10-01). See [Phase 2 report](phase-reports/PHASE-2.md)               |
 | 3     | WhatsApp connection (Embedded Signup), Meta webhooks, credential encryption | **Done** (2026-10-01). See [Phase 3 report](phase-reports/PHASE-3.md)               |
-| 4     | Templates, inbox, composer, media                                           | Window rule enforced server-side; notes cannot reach send path (test)               |
+| 4     | Templates, inbox, composer, media                                           | **Done** (2026-10-01). See [Phase 4 report](phase-reports/PHASE-4.md)               |
 | 5     | Campaigns, BullMQ queue, scheduling, rate limiting                          | Retry test proves no duplicate send; opted-out contacts excluded from marketing     |
 | 6     | Analytics from MessageEvent, CSV report export                              | Failed never counted as delivered (test); metrics reconstructable from events       |
 | 7     | Automations (JSON workflow + simple UI)                                     | Triggers/conditions/actions from brief; loop protection                             |

@@ -30,7 +30,12 @@ export type AuditAction =
   | "custom_field.deleted"
   | "whatsapp.connected"
   | "whatsapp.setup_failed"
-  | "whatsapp.disconnected";
+  | "whatsapp.disconnected"
+  | "template.created"
+  | "template.deleted"
+  | "templates.synced"
+  | "conversation.assigned"
+  | "conversation.status_changed";
 
 export interface AuditEntry {
   action: AuditAction;

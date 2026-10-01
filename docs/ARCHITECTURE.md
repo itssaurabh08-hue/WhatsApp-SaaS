@@ -156,7 +156,7 @@ Flow:
 3. Server action `completeConnectionAction` → `completeEmbeddedSignup()` (`src/server/whatsapp/connection.ts`): exchange code → business token; list the WABA's phone numbers with that token to confirm the returned IDs (rejects forged IDs); store token and a generated 6-digit PIN encrypted; subscribe app to WABA webhooks; register the number; read quality, limit and name status.
 4. If subscribe/register fails the account stays `PENDING_SETUP` with a user-safe reason and "Finish setup" retries only the missing steps (registration is limited to 10 tries per 72 h by Meta).
 
-All Meta calls go through `WhatsAppProvider` (`src/server/providers/whatsapp/types.ts`), implemented by `MetaCloudProvider` on top of `GraphClient`, which adds `appsecret_proof`, timeouts, error mapping (`MetaApiError` with a user-safe message per documented code) and records call metadata (never tokens or bodies) in `ProviderApiLog`. Messaging and template methods are added in Phase 4.
+All Meta calls go through `WhatsAppProvider` (`src/server/providers/whatsapp/types.ts`), implemented by `MetaCloudProvider` on top of `GraphClient`, which adds `appsecret_proof`, timeouts, error mapping (`MetaApiError` with a user-safe message per documented code) and records call metadata (never tokens or bodies) in `ProviderApiLog`. Phase 4 added `sendMessage`, `uploadMedia`, `getMediaInfo`, `downloadMedia`, `listTemplates`, `getTemplate`, `createTemplate` and `deleteTemplate`.
 
 Credentials: AES-256-GCM (`src/server/crypto/secrets.ts`) with key id for rotation, stored in `Credential`, referenced by `WhatsAppAccount.accessTokenRef` / `registrationPinRef`, decrypted only server-side.
 
@@ -164,21 +164,27 @@ A phone number can belong to one workspace (unique `phoneNumberId`). Webhook rou
 
 ### Webhooks (inbound from Meta)
 
-`/api/webhooks/meta`: GET handles the verification handshake (`WHATSAPP_VERIFY_TOKEN`); POST verifies `X-Hub-Signature-256` on the raw body, splits deliveries into one `WebhookEvent` per message/status/change with a stable `dedupeKey` (unique; Meta retries for up to 7 days and may re-batch), routes to a workspace by phone number ID or WABA ID, returns 200 and enqueues a BullMQ job per new event. If storing fails it returns 503 so Meta retries. The worker (`npm run worker`, separate process and Docker target) processes events; a sweeper re-enqueues events stored while Redis was down. Phase 3 handlers: `account_update` (uninstall/deletion/restriction → account status), `phone_number_quality_update` (messaging limit), `user_preferences` (marketing stop/resume → contact opt-out/opt-in). `messages` and template events are stored as `DEFERRED` and replayed when their handlers ship in Phase 4.
+`/api/webhooks/meta`: GET handles the verification handshake (`WHATSAPP_VERIFY_TOKEN`); POST verifies `X-Hub-Signature-256` on the raw body, splits deliveries into one `WebhookEvent` per message/status/change with a stable `dedupeKey` (unique; Meta retries for up to 7 days and may re-batch), routes to a workspace by phone number ID or WABA ID, returns 200 and enqueues a BullMQ job per new event. If storing fails it returns 503 so Meta retries. The worker (`npm run worker`, separate process and Docker target) processes events; a sweeper re-enqueues events stored while Redis was down. Phase 3 handlers: `account_update` (uninstall/deletion/restriction → account status), `phone_number_quality_update` (messaging limit), `user_preferences` (marketing stop/resume → contact opt-out/opt-in). Phase 4 handlers (`src/server/messaging/inbound.ts`): `messages` (incoming messages create or update the contact, conversation and message, and queue media downloads; statuses update outbound messages) and `message_template_status_update`. Events stored as `DEFERRED` before Phase 4 are replayed by the worker sweeper in arrival order.
 
 ### Customer service window
 
-Free-form messages are allowed for 24 hours after the contact's last inbound message or call (verified). The server will compute `windowExpiresAt` from the last inbound message and refuse free-form sends outside it, pointing the user to approved templates (Phase 4).
+Free-form messages are allowed for 24 hours after the contact's last inbound message or call (verified). `Conversation.lastInboundAt` holds the last customer message time (only moved forward). `createOutboundMessage` refuses free-form messages when `lastInboundAt + 24h` has passed and points the user to approved templates; the inbox composer shows the remaining time. Meta remains the final authority (error `131047`).
 
 ## 7. Messaging pipeline and idempotency
 
-1. A send request (inbox, API, campaign, automation) creates a `Message` row with status `QUEUED` and a unique `idempotencyKey` (campaign: `campaignId:contactId`; API: client-supplied `Idempotency-Key` header or generated).
-2. A BullMQ job is enqueued with `jobId = message.id`, so enqueuing twice is a no-op.
-3. The worker locks the row (`UPDATE ... WHERE id = ? AND status = 'QUEUED' AND providerAttemptId IS NULL`) before calling Meta. If the row already has a `whatsappMessageId`, the job exits without sending. This is what prevents duplicate sends on retry.
-4. Ambiguous failures (timeout after request sent) are marked `UNKNOWN_SEND_STATE` internally and not blindly retried; they reconcile when a status webhook arrives or are marked failed after a timeout. This trades a small risk of a missed message for never sending duplicates, as the brief requires.
-5. Retryable errors (network before send, 429, 5xx) retry with exponential backoff; permanent errors (invalid number, template not approved, opted out) fail immediately with a mapped user-facing message and the raw error kept internally.
-6. Per phone-number rate limiting via BullMQ group/limiter keyed on `whatsappAccountId`. Concrete throughput numbers come from Meta's limits (to be verified) and the account's stored messaging tier.
-7. Every status transition is appended to `MessageEvent` (immutable). `Message` holds denormalized current status and timestamps. Status only moves forward (QUEUED < SENT < DELIVERED < READ; FAILED terminal) so out-of-order webhooks cannot regress it.
+Implemented in Phase 4 (`src/server/messaging/outbound.ts`):
+
+1. A send request (inbox now; campaigns, API and automations later) calls `createOutboundMessage`, which validates the rules below and creates a `Message` with status `QUEUED` plus a `QUEUED` `MessageEvent`. An optional `idempotencyKey` (unique per workspace) makes the request safe to repeat: the inbox composer sends a fresh key per message, so a double click returns the original message.
+2. A BullMQ job (`outbound-messages`) is added with `jobId = message.id`, so enqueueing twice is a no-op.
+3. The worker's `deliverMessage` claims the row with `UPDATE ... SET status = 'SENDING' WHERE id = ? AND status = 'QUEUED'`. Only one caller can win, so a message reaches Meta at most once. The message id is sent as `biz_opaque_callback_data`, so status webhooks can be matched even if the process dies before saving the wamid.
+4. Outcomes: Meta accepts → `ACCEPTED` with the wamid; Meta refuses with a retryable code (rate limit, temporary) or the request never left (DNS, connection refused) → back to `QUEUED` and retried with backoff; permanent error → `FAILED` with Meta's code and a user-safe message; **no response** (timeout after sending) → stays `SENDING` and is never retried. The reconciler marks `SENDING` messages older than one hour as `FAILED` ("not confirmed"); a later status webhook that matches by `biz_opaque_callback_data` corrects it.
+5. Rules checked at creation and again at delivery: the WhatsApp number must be connected; non-template messages only inside the customer service window; templates must be `APPROVED`; `MARKETING` templates are never sent to `OPTED_OUT` contacts. Meta error `131050` (user stopped marketing messages) marks the contact opted out; auth errors mark the number "Needs reconnecting".
+6. Per-number rate limiting is added with campaigns in Phase 5 (Meta's documented default is 80 messages per second per number).
+7. Status webhooks append to `MessageEvent` (unique per message and type, so replays are no-ops) and move `Message.status` forward only (`QUEUED < SENDING < ACCEPTED < SENT < DELIVERED < READ`). "read" implies "delivered". A failure never overrides a delivered or read message.
+
+Internal notes are a separate table (`ConversationNote`) with no code path to the send queue.
+
+Media (`src/server/messaging/media.ts`, `src/server/storage`): incoming media is downloaded by the `media-downloads` worker queue (fresh 5-minute URL per attempt, bearer token) into object storage (`STORAGE_DRIVER=local` or `s3`). Team uploads are checked against WhatsApp's types and sizes and by file signature, stored, and uploaded to Meta on first send (ids reused for 29 days per number). Files are served only through `/w/[slug]/inbox/media/[id]` after a workspace permission check, with `nosniff`, a sandbox CSP and attachment disposition for non-media types.
 
 ## 8. Webhooks
 

@@ -69,7 +69,7 @@ describe("webhook ingestion", () => {
     expect((await ingestMetaWebhook(raw, sign(raw), SECRET)).status).toBe(400);
   });
 
-  it("keeps message events DEFERRED until messaging handlers exist, and ignores unknown accounts", async () => {
+  it("processes message events and ignores unknown accounts", async () => {
     await connected();
     await ingestAndProcess(
       body("messages", {
@@ -90,8 +90,27 @@ describe("webhook ingestion", () => {
       ),
     );
     const byKey = Object.fromEntries((await systemDb.webhookEvent.findMany()).map((e) => [e.dedupeKey, e.status]));
-    expect(byKey["msg:wamid.9"]).toBe("DEFERRED");
+    expect(byKey["msg:wamid.9"]).toBe("PROCESSED");
     expect(byKey["msg:wamid.10"]).toBe("IGNORED");
+  });
+
+  it("replays events stored as DEFERRED before their handler existed", async () => {
+    const ctx = await connected();
+    const raw = body("messages", {
+      messaging_product: "whatsapp",
+      metadata,
+      messages: [
+        { id: "wamid.old", from: "16505551234", timestamp: "1700000000", type: "text", text: { body: "hello" } },
+      ],
+    });
+    await ingestMetaWebhook(raw, sign(raw), SECRET);
+    await systemDb.webhookEvent.updateMany({ data: { status: "DEFERRED" } });
+    const { findDeferredEvents } = await import("@/server/webhooks/meta-processor");
+    const ids = await findDeferredEvents();
+    expect(ids).toHaveLength(1);
+    expect(await processWebhookEvent(ids[0]!)).toBe("PROCESSED");
+    expect(await db.message.count({ where: { workspaceId: ctx.workspaceId, body: "hello" } })).toBe(1);
+    expect(await findDeferredEvents()).toHaveLength(0);
   });
 });
 
