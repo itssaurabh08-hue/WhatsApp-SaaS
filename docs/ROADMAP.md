@@ -2,18 +2,18 @@
 
 Each phase ends with: tests, lint, typecheck, migration check, manual verification where possible, docs update, and a phase report (implemented, files, DB changes, env vars, tests, open issues, next step). A phase does not start while the previous one has unresolved critical errors.
 
-| Phase | Scope                                                                     | Exit criteria                                                                                        |
-| ----- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 1     | Project setup, DB, auth, workspaces, UI shell                             | **Done** (2026-10-01). See [Phase 1 report](phase-reports/PHASE-1.md)                                |
-| 2     | Contacts, tags, lists, segments, CSV import/export                        | 100k-contact list paginates server-side; import handles malformed CSV with downloadable error report |
-| 3     | WhatsApp connection, Meta webhook endpoint, credential encryption         | Meta items 1-6, 13 verified; webhook signature + idempotency tests pass                              |
-| 4     | Templates, inbox, composer, media                                         | Window rule enforced server-side; notes cannot reach send path (test)                                |
-| 5     | Campaigns, BullMQ queue, scheduling, rate limiting                        | Retry test proves no duplicate send; opted-out contacts excluded from marketing                      |
-| 6     | Analytics from MessageEvent, CSV report export                            | Failed never counted as delivered (test); metrics reconstructable from events                        |
-| 7     | Automations (JSON workflow + simple UI)                                   | Triggers/conditions/actions from brief; loop protection                                              |
-| 8     | Public REST API v1, API keys, customer webhooks, integrations page        | API key scoped to one workspace (test); signed deliveries with retry log                             |
-| 9     | Team management, invites, billing (Stripe), plan limits, usage            | Plan limits enforced server-side                                                                     |
-| 10    | Security hardening, admin area, privacy docs, perf/load checks, E2E suite | Acceptance criteria list in brief section 50 passes in Playwright where automatable                  |
+| Phase | Scope                                                                     | Exit criteria                                                                       |
+| ----- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1     | Project setup, DB, auth, workspaces, UI shell                             | **Done** (2026-10-01). See [Phase 1 report](phase-reports/PHASE-1.md)               |
+| 2     | Contacts, tags, lists, segments, CSV import/export                        | **Done** (2026-10-01). See [Phase 2 report](phase-reports/PHASE-2.md)               |
+| 3     | WhatsApp connection, Meta webhook endpoint, credential encryption         | Meta items 1-6, 13 verified; webhook signature + idempotency tests pass             |
+| 4     | Templates, inbox, composer, media                                         | Window rule enforced server-side; notes cannot reach send path (test)               |
+| 5     | Campaigns, BullMQ queue, scheduling, rate limiting                        | Retry test proves no duplicate send; opted-out contacts excluded from marketing     |
+| 6     | Analytics from MessageEvent, CSV report export                            | Failed never counted as delivered (test); metrics reconstructable from events       |
+| 7     | Automations (JSON workflow + simple UI)                                   | Triggers/conditions/actions from brief; loop protection                             |
+| 8     | Public REST API v1, API keys, customer webhooks, integrations page        | API key scoped to one workspace (test); signed deliveries with retry log            |
+| 9     | Team management, invites, billing (Stripe), plan limits, usage            | Plan limits enforced server-side                                                    |
+| 10    | Security hardening, admin area, privacy docs, perf/load checks, E2E suite | Acceptance criteria list in brief section 50 passes in Playwright where automatable |
 
 ## Phase 1: detailed plan (completed; see the report for deviations)
 

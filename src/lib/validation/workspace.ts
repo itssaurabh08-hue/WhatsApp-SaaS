@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CURRENCIES } from "@/lib/currencies";
+import { isCountryCode } from "@/lib/phone";
 
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/;
 
@@ -56,6 +57,12 @@ export const businessSettingsSchema = z.object({
   businessName: z.string().trim().min(1, "Enter your business name.").max(120),
   timezone: timezoneSchema,
   currency: currencySchema,
+  defaultCountry: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => v === "" || isCountryCode(v), "Choose a valid country.")
+    .transform((v) => (v === "" ? null : v)),
 });
 
 export const workspaceSettingsSchema = businessSettingsSchema.extend({

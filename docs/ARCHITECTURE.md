@@ -101,6 +101,7 @@ src/
     authz/             TenantContext, can/requirePermission
     db/                Prisma client + tenant guard
     workspace/         workspace and member services
+    contacts/          contacts, tags, lists, custom fields, segments, import, export
     email/             EmailProvider (SMTP, memory) + templates
     audit/             audit log writer
     logging/           pino logger
@@ -195,14 +196,14 @@ pino JSON logs with `requestId` (from header or generated in `src/proxy.ts`) and
 
 ## 12. External dependencies
 
-| Dependency                          | Used for                                     | Needed from phase          |
-| ----------------------------------- | -------------------------------------------- | -------------------------- |
-| Meta WhatsApp Cloud API (Graph API) | Sending, templates, phone status, media      | 3                          |
-| Meta webhooks                       | Inbound messages, statuses, template updates | 3                          |
-| Stripe                              | Subscription billing                         | 9                          |
-| S3-compatible storage               | Media, CSV import files, exports             | 2 (CSV), 4 (media)         |
-| SMTP / email provider               | Verification, reset, invites, notifications  | 1                          |
-| Redis                               | Queues, rate limiting                        | 1 (rate limit), 5 (queues) |
+| Dependency                          | Used for                                                                       | Needed from phase          |
+| ----------------------------------- | ------------------------------------------------------------------------------ | -------------------------- |
+| Meta WhatsApp Cloud API (Graph API) | Sending, templates, phone status, media                                        | 3                          |
+| Meta webhooks                       | Inbound messages, statuses, template updates                                   | 3                          |
+| Stripe                              | Subscription billing                                                           | 9                          |
+| S3-compatible storage               | Media (CSV imports are kept in PostgreSQL until processed; see Phase 2 report) | 4                          |
+| SMTP / email provider               | Verification, reset, invites, notifications                                    | 1                          |
+| Redis                               | Queues, rate limiting                                                          | 1 (rate limit), 5 (queues) |
 
 ## 13. Data stored and why (privacy summary)
 

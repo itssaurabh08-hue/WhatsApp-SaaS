@@ -34,6 +34,8 @@ export const NAVIGATION: NavItem[] = [
       { label: "All Contacts", path: "/contacts", permission: "contacts:read" },
       { label: "Lists", path: "/contacts/lists", permission: "contacts:read" },
       { label: "Tags", path: "/contacts/tags", permission: "contacts:read" },
+      { label: "Segments", path: "/contacts/segments", permission: "contacts:read" },
+      { label: "Custom fields", path: "/contacts/fields", permission: "contacts:read" },
       { label: "Import", path: "/contacts/import", permission: "contacts:import" },
     ],
   },

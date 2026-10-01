@@ -6,6 +6,7 @@ import { BusinessDetailsForm } from "@/components/app/business-details-form";
 import { OnboardingSteps, type OnboardingStepKey } from "@/components/app/onboarding-steps";
 import { SubmitButton } from "@/components/app/submit-button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { listCountries } from "@/lib/phone";
 import { listTimezones } from "@/lib/timezones";
 import { can, getTenantContext } from "@/server/authz/tenant";
 import { continueOnboardingAction, saveBusinessDetailsAction } from "../actions";
@@ -40,10 +41,12 @@ export default async function SetupPage({ params }: PageProps<"/w/[slug]/setup">
                   variant="onboarding"
                   action={saveBusinessDetailsAction.bind(null, slug)}
                   timezones={listTimezones(ctx.workspace.timezone)}
+                  countries={listCountries()}
                   defaults={{
                     businessName: ctx.workspace.businessName ?? ctx.workspace.name,
                     timezone: ctx.workspace.timezone,
                     currency: ctx.workspace.currency,
+                    defaultCountry: ctx.workspace.defaultCountry ?? "",
                   }}
                 />
               </CardContent>
@@ -70,10 +73,21 @@ export default async function SetupPage({ params }: PageProps<"/w/[slug]/setup">
               title="Import contacts"
               description="Bring in the customers you want to message, with their opt-in status."
             >
-              <p className="text-muted-foreground text-sm">
-                Contact import (CSV with column mapping, validation and duplicate detection) is not available in this
-                build yet. You can skip this step for now.
-              </p>
+              <div className="text-muted-foreground grid gap-3 text-sm">
+                <p>
+                  Upload a CSV file with at least a phone number column. You will map columns, review a preview with any
+                  errors, and choose how to record opt-in before anything is imported.
+                </p>
+                <p>
+                  <Link
+                    className="text-foreground font-medium underline underline-offset-4"
+                    href={`/w/${slug}/contacts/import`}
+                  >
+                    Import contacts now
+                  </Link>{" "}
+                  or skip this step and import later from Contacts.
+                </p>
+              </div>
             </StepCard>
           )}
           {step === "TEMPLATES" && (

@@ -41,7 +41,7 @@ describe("workspace validation", () => {
   });
 
   it("only accepts https logo URLs", () => {
-    const base = { name: "Acme", businessName: "Acme", timezone: "UTC", currency: "USD" };
+    const base = { name: "Acme", businessName: "Acme", timezone: "UTC", currency: "USD", defaultCountry: "" };
     expect(workspaceSettingsSchema.safeParse({ ...base, logoUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(workspaceSettingsSchema.safeParse({ ...base, logoUrl: "http://x.com/a.png" }).success).toBe(false);
     expect(workspaceSettingsSchema.parse({ ...base, logoUrl: "" }).logoUrl).toBeNull();

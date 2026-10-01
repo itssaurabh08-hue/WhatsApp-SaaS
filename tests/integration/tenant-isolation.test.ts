@@ -81,7 +81,12 @@ describe("tenant isolation", () => {
     const wsA = await createWorkspaceWithMember(alice.id);
     const wsB = await createWorkspaceWithMember(bob.id);
     const ctx = await tenantContextFor(alice.id, wsA.slug);
-    await updateBusinessDetails(ctx, { businessName: "Alice Biz", timezone: "Asia/Kolkata", currency: "INR" });
+    await updateBusinessDetails(ctx, {
+      businessName: "Alice Biz",
+      timezone: "Asia/Kolkata",
+      currency: "INR",
+      defaultCountry: "IN",
+    });
     const b = await db.workspace.findUniqueOrThrow({ where: { id: wsB.id } });
     expect(b.businessName).toBeNull();
     const a = await db.workspace.findUniqueOrThrow({ where: { id: wsA.id } });
@@ -110,7 +115,14 @@ describe("server-side permissions", () => {
       const member = await createUser();
       await addMember(ws.id, member.id, role);
       const ctx = await tenantContextFor(member.id, ws.slug);
-      const input = { name: "Hacked", businessName: "Hacked", timezone: "UTC", currency: "USD", logoUrl: null };
+      const input = {
+        name: "Hacked",
+        businessName: "Hacked",
+        timezone: "UTC",
+        currency: "USD",
+        defaultCountry: null,
+        logoUrl: null,
+      };
       const error = await updateWorkspaceSettings(ctx, input).catch((e: unknown) => e);
       expect(isAppError(error) && error.code).toBe("FORBIDDEN");
     }
@@ -129,6 +141,7 @@ describe("server-side permissions", () => {
       businessName: "New Biz",
       timezone: "UTC",
       currency: "EUR",
+      defaultCountry: null,
       logoUrl: null,
     });
     const entry = await db.auditLog.findFirstOrThrow({

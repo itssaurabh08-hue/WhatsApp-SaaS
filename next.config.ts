@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   poweredByHeader: false,
   serverExternalPackages: ["@node-rs/argon2", "pino"],
+  experimental: {
+    // CSV contact imports are uploaded through a server action (files up to 5 MB, see src/lib/csv.ts).
+    serverActions: { bodySizeLimit: "6mb" },
+  },
 };
 
 export default nextConfig;

@@ -16,7 +16,18 @@ export type AuditAction =
   | "workspace.settings_updated"
   | "workspace.member_invited"
   | "workspace.member_removed"
-  | "workspace.member_role_changed";
+  | "workspace.member_role_changed"
+  | "contact.deleted"
+  | "contact.opt_in_changed"
+  | "contacts.bulk_deleted"
+  | "contacts.imported"
+  | "contacts.exported"
+  | "tag.deleted"
+  | "segment.created"
+  | "segment.updated"
+  | "segment.deleted"
+  | "custom_field.created"
+  | "custom_field.deleted";
 
 export interface AuditEntry {
   action: AuditAction;

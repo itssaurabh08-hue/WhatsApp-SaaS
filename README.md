@@ -2,7 +2,7 @@
 
 Multi-tenant SaaS for businesses to send, receive, automate and analyze WhatsApp Business messages using only the official Meta WhatsApp Business Platform (Cloud API).
 
-**Status:** Phase 1 of 10 is complete: project setup, database, authentication, workspaces, permissions, and the app shell. WhatsApp messaging, contacts, campaigns and later features are not built yet. See [the roadmap](docs/ROADMAP.md).
+**Status:** Phases 1 and 2 of 10 are complete: project setup, authentication, workspaces, permissions, the app shell, and contact management (contacts, tags, lists, custom fields, segments, CSV import and export). WhatsApp messaging, campaigns and later features are not built yet. See [the roadmap](docs/ROADMAP.md).
 
 The product name and branding live in [`src/config/brand.ts`](src/config/brand.ts) and can be overridden with `NEXT_PUBLIC_BRAND_*` environment variables.
 
@@ -12,6 +12,7 @@ The product name and branding live in [`src/config/brand.ts`](src/config/brand.t
 - [Database schema](docs/DATABASE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Phase 1 report](docs/phase-reports/PHASE-1.md)
+- [Phase 2 report](docs/phase-reports/PHASE-2.md)
 - [Meta API items requiring verification](docs/META_API_VERIFICATION.md)
 
 ## Requirements
@@ -34,7 +35,7 @@ Emails sent in development (verification, password reset) are captured by Mailpi
 
 ### Demo data
 
-`npm run db:seed` creates a workspace at `/w/demo`, clearly labeled "Demo data" in the UI, with four users (password `demo-password-123`):
+`npm run db:seed` creates a workspace at `/w/demo`, clearly labeled "Demo data" in the UI, with 200 demo contacts, tags, a list, a custom field, a segment and four users (password `demo-password-123`):
 
 | Role    | Email                    |
 | ------- | ------------------------ |

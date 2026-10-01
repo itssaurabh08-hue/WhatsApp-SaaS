@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { BusinessDetailsForm } from "@/components/app/business-details-form";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { listCountries } from "@/lib/phone";
 import { listTimezones } from "@/lib/timezones";
 import { can, getTenantContext } from "@/server/authz/tenant";
 import { saveWorkspaceSettingsAction } from "../../actions";
@@ -28,11 +29,13 @@ export default async function SettingsPage({ params }: PageProps<"/w/[slug]/sett
             disabled={!editable}
             action={saveWorkspaceSettingsAction.bind(null, slug)}
             timezones={listTimezones(ctx.workspace.timezone)}
+            countries={listCountries()}
             defaults={{
               name: ctx.workspace.name,
               businessName: ctx.workspace.businessName ?? "",
               timezone: ctx.workspace.timezone,
               currency: ctx.workspace.currency,
+              defaultCountry: ctx.workspace.defaultCountry ?? "",
               logoUrl: ctx.workspace.logoUrl ?? "",
             }}
           />

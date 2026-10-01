@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16 via Prisma 7. Phase 1 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
+PostgreSQL 16 via Prisma 7. Phase 1 and Phase 2 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
 
 ## Conventions
 
@@ -23,6 +23,21 @@ PostgreSQL 16 via Prisma 7. Phase 1 models are implemented in `prisma/schema.pri
 | WorkspaceMember        | `role` enum OWNER/ADMIN/AGENT/ANALYST                                                                                     | Unique (`workspaceId`, `userId`)                     |
 | WorkspaceInvite        | `email`, `role`, `tokenHash`, `expiresAt`, `acceptedAt`                                                                   | Used in Phase 9, created in Phase 1 for onboarding   |
 | AuditLog               | `workspaceId?`, `actorUserId?`, `actorApiKeyId?`, `action`, `entityType`, `entityId`, `ip`, `userAgent`, `metadata` JSONB | Append-only                                          |
+
+## Phase 2 models (implemented)
+
+| Model                          | Notes                                                                                                                                                                                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contact                        | Unique (`workspaceId`, `normalizedPhoneNumber`), E.164 via libphonenumber-js. `optInStatus` UNKNOWN/OPTED_IN/OPTED_OUT with `optInAt`/`optedOutAt` history. `customFields` JSONB of normalized strings. `source` MANUAL/IMPORT/API/INBOUND. `lastMessageAt` filled from Phase 4. |
+| Tag, ContactTag                | Join table carries `workspaceId`.                                                                                                                                                                                                                                                |
+| ContactList, ContactListMember | Join table carries `workspaceId`.                                                                                                                                                                                                                                                |
+| ContactNote                    | Internal notes, separate from messages.                                                                                                                                                                                                                                          |
+| CustomFieldDefinition          | `key`, `label`, `type` TEXT/NUMBER/DATE/BOOLEAN.                                                                                                                                                                                                                                 |
+| Segment                        | `definition` JSONB validated by `src/lib/segments.ts`.                                                                                                                                                                                                                           |
+| ImportJob, ImportRowError      | Raw CSV kept until the import runs, then cleared; failed rows kept for the report.                                                                                                                                                                                               |
+| Workspace.defaultCountry       | ISO 3166-1 alpha-2 for national phone numbers.                                                                                                                                                                                                                                   |
+
+The Phase 2 rows in the table below are superseded by this section.
 
 ## Later-phase models
 

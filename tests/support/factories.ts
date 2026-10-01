@@ -42,3 +42,26 @@ export async function tenantContextFor(userId: string, slug: string): Promise<Te
   });
   return { workspace: membership.workspace, workspaceId: membership.workspace.id, user, role: membership.role };
 }
+
+/** Owner + workspace + context in one call. */
+export async function ownerContext(opts: { defaultCountry?: string } = {}) {
+  const user = await createUser();
+  const ws = await createWorkspaceWithMember(user.id, "OWNER");
+  if (opts.defaultCountry)
+    await db.workspace.update({ where: { id: ws.id }, data: { defaultCountry: opts.defaultCountry } });
+  return tenantContextFor(user.id, ws.slug);
+}
+
+/** Adds a member with `role` to the context's workspace and returns their context. */
+export async function memberContext(ownerCtx: TenantContext, role: WorkspaceRole) {
+  const user = await createUser();
+  await addMember(ownerCtx.workspaceId, user.id, role);
+  return tenantContextFor(user.id, ownerCtx.workspace.slug);
+}
+
+let phoneCounter = 1000000;
+/** Unique valid Indian mobile numbers for tests. */
+export function testPhone() {
+  phoneCounter += 1;
+  return `+9198${String(phoneCounter).padStart(8, "0")}`;
+}

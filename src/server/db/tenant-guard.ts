@@ -6,7 +6,19 @@
  *
  * Add every new tenant-owned model to TENANT_MODELS as it is introduced.
  */
-export const TENANT_MODELS = new Set<string>(["WorkspaceInvite"]);
+export const TENANT_MODELS = new Set<string>([
+  "WorkspaceInvite",
+  "Contact",
+  "Tag",
+  "ContactTag",
+  "ContactList",
+  "ContactListMember",
+  "ContactNote",
+  "CustomFieldDefinition",
+  "Segment",
+  "ImportJob",
+  "ImportRowError",
+]);
 
 export class TenantScopeError extends Error {
   constructor(model: string, operation: string) {

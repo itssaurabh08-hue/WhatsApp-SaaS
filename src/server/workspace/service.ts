@@ -70,7 +70,7 @@ export async function listUserWorkspaces(userId: string) {
 
 export async function updateBusinessDetails(
   ctx: TenantContext,
-  input: { businessName: string; timezone: string; currency: string },
+  input: { businessName: string; timezone: string; currency: string; defaultCountry: string | null },
   meta: Meta = {},
 ) {
   requirePermission(ctx, "workspace:update");
@@ -80,6 +80,7 @@ export async function updateBusinessDetails(
       businessName: input.businessName,
       timezone: input.timezone,
       currency: input.currency,
+      defaultCountry: input.defaultCountry,
       onboardingStep: ctx.workspace.onboardingStep === "BUSINESS" ? "WHATSAPP" : undefined,
     },
     select: { slug: true },
@@ -91,7 +92,7 @@ export async function updateBusinessDetails(
       actorUserId: ctx.user.id,
       entityType: "Workspace",
       entityId: ctx.workspaceId,
-      metadata: { fields: ["businessName", "timezone", "currency"] },
+      metadata: { fields: ["businessName", "timezone", "currency", "defaultCountry"] },
     },
     meta,
   );
@@ -100,7 +101,14 @@ export async function updateBusinessDetails(
 
 export async function updateWorkspaceSettings(
   ctx: TenantContext,
-  input: { name: string; businessName: string; timezone: string; currency: string; logoUrl: string | null },
+  input: {
+    name: string;
+    businessName: string;
+    timezone: string;
+    currency: string;
+    defaultCountry: string | null;
+    logoUrl: string | null;
+  },
   meta: Meta = {},
 ) {
   requirePermission(ctx, "workspace:update");
@@ -138,8 +146,9 @@ export async function advanceOnboarding(ctx: TenantContext, to: OnboardingStepNa
 
 export async function getWorkspaceOverview(ctx: TenantContext) {
   requirePermission(ctx, "workspace:read");
-  const [memberCount, recentAudit] = await Promise.all([
+  const [memberCount, contactCount, recentAudit] = await Promise.all([
     db.workspaceMember.count({ where: { workspaceId: ctx.workspaceId } }),
+    can(ctx, "contacts:read") ? db.contact.count({ where: { workspaceId: ctx.workspaceId } }) : Promise.resolve(null),
     can(ctx, "audit:read")
       ? db.auditLog.findMany({
           where: { workspaceId: ctx.workspaceId },
@@ -149,5 +158,5 @@ export async function getWorkspaceOverview(ctx: TenantContext) {
         })
       : Promise.resolve(null),
   ]);
-  return { memberCount, recentAudit };
+  return { memberCount, contactCount, recentAudit };
 }

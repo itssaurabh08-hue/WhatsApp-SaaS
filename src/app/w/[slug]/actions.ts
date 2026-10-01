@@ -14,14 +14,14 @@ import {
   type OnboardingStepName,
 } from "@/server/workspace/service";
 
-type BusinessFields = "businessName" | "timezone" | "currency";
+type BusinessFields = "businessName" | "timezone" | "currency" | "defaultCountry";
 export async function saveBusinessDetailsAction(
   slug: string,
   _prev: ActionState<BusinessFields>,
   formData: FormData,
 ): Promise<ActionState<BusinessFields>> {
   const ctx = await getTenantContext(slug);
-  const values = formValues(formData, ["businessName", "timezone", "currency"] as const);
+  const values = formValues(formData, ["businessName", "timezone", "currency", "defaultCountry"] as const);
   const parsed = businessSettingsSchema.safeParse(values);
   if (!parsed.success) return { ok: false, fieldErrors: fieldErrorsFrom(parsed.error), values };
   try {
@@ -45,14 +45,21 @@ export async function continueOnboardingAction(slug: string, from: string): Prom
   redirect(to === "DONE" ? `/w/${slug}` : `/w/${slug}/setup`);
 }
 
-type SettingsFields = "name" | "businessName" | "timezone" | "currency" | "logoUrl";
+type SettingsFields = "name" | "businessName" | "timezone" | "currency" | "defaultCountry" | "logoUrl";
 export async function saveWorkspaceSettingsAction(
   slug: string,
   _prev: ActionState<SettingsFields>,
   formData: FormData,
 ): Promise<ActionState<SettingsFields>> {
   const ctx = await getTenantContext(slug);
-  const values = formValues(formData, ["name", "businessName", "timezone", "currency", "logoUrl"] as const);
+  const values = formValues(formData, [
+    "name",
+    "businessName",
+    "timezone",
+    "currency",
+    "defaultCountry",
+    "logoUrl",
+  ] as const);
   const parsed = workspaceSettingsSchema.safeParse(values);
   if (!parsed.success) return { ok: false, fieldErrors: fieldErrorsFrom(parsed.error), values };
   try {

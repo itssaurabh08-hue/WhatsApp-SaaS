@@ -16,6 +16,7 @@ export interface TenantContext {
     logoUrl: string | null;
     timezone: string;
     currency: string;
+    defaultCountry: string | null;
     planId: string;
     onboardingStep: string;
     isDemo: boolean;
@@ -44,6 +45,7 @@ export async function loadTenantContext(userId: string, slug: string) {
           logoUrl: true,
           timezone: true,
           currency: true,
+          defaultCountry: true,
           planId: true,
           onboardingStep: true,
           isDemo: true,

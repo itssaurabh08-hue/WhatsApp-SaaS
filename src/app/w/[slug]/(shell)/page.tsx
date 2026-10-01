@@ -28,11 +28,11 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
   const plan = getPlan(ctx.workspace.planId);
   const stepIndex = STEP_ORDER.indexOf(ctx.workspace.onboardingStep);
 
-  const checklist = [
+  const checklist: { label: string; done: boolean; note?: string; href?: string }[] = [
     { label: "Create your workspace", done: true },
     { label: "Add business details", done: stepIndex > 0 },
     { label: "Connect a WhatsApp number", done: false, note: "Not available in this build yet" },
-    { label: "Import contacts", done: false, note: "Not available in this build yet" },
+    { label: "Import contacts", done: (overview.contactCount ?? 0) > 0, href: `/w/${slug}/contacts/import` },
     { label: "Create or select an approved template", done: false, note: "Not available in this build yet" },
     { label: "Send your first campaign", done: false, note: "Not available in this build yet" },
   ];
@@ -66,7 +66,13 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
                   ) : (
                     <CircleIcon className="text-muted-foreground size-4" aria-label="Not done" />
                   )}
-                  <span className={item.done ? "text-muted-foreground line-through" : undefined}>{item.label}</span>
+                  {item.href && !item.done ? (
+                    <Link href={item.href} className="underline-offset-4 hover:underline">
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <span className={item.done ? "text-muted-foreground line-through" : undefined}>{item.label}</span>
+                  )}
                   {!item.done && item.note && <span className="text-muted-foreground text-xs">{item.note}</span>}
                 </li>
               ))}
@@ -83,6 +89,19 @@ export default async function DashboardPage({ params }: PageProps<"/w/[slug]">) 
               <dd>
                 <Badge variant="secondary">Not connected</Badge>
               </dd>
+              {overview.contactCount !== null && (
+                <>
+                  <dt className="text-muted-foreground">Contacts</dt>
+                  <dd>
+                    <Link className="hover:underline" href={`/w/${slug}/contacts`}>
+                      {overview.contactCount.toLocaleString("en-US")}
+                    </Link>
+                    {plan.limits.contacts !== null && (
+                      <span className="text-muted-foreground"> of {plan.limits.contacts.toLocaleString("en-US")}</span>
+                    )}
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">Plan</dt>
               <dd>{plan.name}</dd>
               <dt className="text-muted-foreground">Members</dt>

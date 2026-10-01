@@ -10,18 +10,19 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { ActionState } from "@/lib/action-state";
 import { CURRENCIES } from "@/lib/currencies";
 
-type Fields = "name" | "businessName" | "timezone" | "currency" | "logoUrl";
+type Fields = "name" | "businessName" | "timezone" | "currency" | "defaultCountry" | "logoUrl";
 
 interface Props {
   action: (prev: ActionState<Fields>, formData: FormData) => Promise<ActionState<Fields>>;
   timezones: string[];
+  countries: { code: string; name: string; callingCode: string }[];
   defaults: Partial<Record<Fields, string>>;
   /** Full settings form shows workspace name and logo; onboarding shows business fields only. */
   variant: "onboarding" | "settings";
   disabled?: boolean;
 }
 
-export function BusinessDetailsForm({ action, timezones, defaults, variant, disabled }: Props) {
+export function BusinessDetailsForm({ action, timezones, countries, defaults, variant, disabled }: Props) {
   const [state, formAction] = useActionState(action, {});
   const v = { ...defaults, ...state.values };
 
@@ -80,6 +81,21 @@ export function BusinessDetailsForm({ action, timezones, defaults, variant, disa
             </NativeSelect>
           </FormField>
         </div>
+        <FormField
+          id="defaultCountry"
+          label="Default country for phone numbers"
+          error={state.fieldErrors?.defaultCountry}
+          hint="Used when a phone number is entered without a country code."
+        >
+          <NativeSelect id="defaultCountry" name="defaultCountry" defaultValue={v.defaultCountry ?? ""}>
+            <option value="">None (always require +country code)</option>
+            {countries.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name} (+{c.callingCode})
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
         {variant === "settings" && (
           <FormField
             id="logoUrl"
