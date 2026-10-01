@@ -35,7 +35,13 @@ export type AuditAction =
   | "template.deleted"
   | "templates.synced"
   | "conversation.assigned"
-  | "conversation.status_changed";
+  | "conversation.status_changed"
+  | "campaign.created"
+  | "campaign.launched"
+  | "campaign.paused"
+  | "campaign.resumed"
+  | "campaign.cancelled"
+  | "campaign.deleted";
 
 export interface AuditEntry {
   action: AuditAction;

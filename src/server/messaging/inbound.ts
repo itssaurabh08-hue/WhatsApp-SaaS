@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { messagePreview, STATUS_RANK } from "@/lib/messaging";
 import { mapMetaTemplateStatus } from "@/lib/templates";
+import { attributeReply } from "@/server/campaigns/engine";
 import { db } from "@/server/db/client";
 import { logger } from "@/server/logging/logger";
 import { getWhatsAppProvider } from "@/server/providers/whatsapp";
@@ -196,6 +197,7 @@ async function handleIncomingMessage(workspaceId: string, account: { id: string 
     where: { id: contact.id, workspaceId, OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: receivedAt } }] },
     data: { lastMessageAt: receivedAt },
   });
+  await attributeReply(workspaceId, contact.id, account.id, receivedAt);
   if (mediaObjectId) {
     await enqueueMediaDownloads([{ mediaObjectId, workspaceId, whatsappAccountId: account.id }]);
   }

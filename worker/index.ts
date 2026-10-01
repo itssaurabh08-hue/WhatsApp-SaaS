@@ -1,15 +1,18 @@
 /**
  * Background worker. Run with `npm run worker` (separate process from the web app).
  * Queues: Meta webhook events, outbound messages, incoming media downloads.
+ * Timers: campaign engine (every 3 s) and sweepers (every 60 s).
  * Sweepers recover work stored while Redis was unavailable.
  */
 import "./env";
 import { createServer } from "node:http";
-import { Worker, type Job } from "bullmq";
+import { DelayedError, Worker, type Job } from "bullmq";
+import { runCampaignTick } from "@/server/campaigns/engine";
 import { logger } from "@/server/logging/logger";
 import { downloadInboundMedia } from "@/server/messaging/media";
 import { deliverMessage, reconcileOutbound } from "@/server/messaging/outbound";
 import { createQueueConnection, queuePrefix } from "@/server/queue/connection";
+import { takeSendSlot } from "@/server/queue/send-rate";
 import { validateStartup } from "@/server/startup";
 import {
   enqueueWebhookEvents,
@@ -39,7 +42,13 @@ const workers = [
   ),
   new Worker<OutboundJobData>(
     OUTBOUND_QUEUE,
-    async (job) => {
+    async (job, token) => {
+      // Per-number send rate (WHATSAPP_SEND_RATE_PER_SECOND): over the limit, retry in a moment
+      // without counting an attempt.
+      if (job.data.whatsappAccountId && !(await takeSendSlot(job.data.whatsappAccountId))) {
+        await job.moveToDelayed(Date.now() + 250 + Math.floor(Math.random() * 750), token);
+        throw new DelayedError();
+      }
       const outcome = await deliverMessage(job.data.messageId, { finalAttempt: isFinalAttempt(job) });
       log.info({ jobId: job.id, outcome }, "outbound message processed");
       return outcome;
@@ -84,6 +93,16 @@ const sweep = async () => {
 const sweepTimer = setInterval(sweep, 60_000);
 void sweep();
 
+// Campaigns: start scheduled ones and feed recipients to the send queue.
+let ticking = false;
+const campaignTimer = setInterval(() => {
+  if (ticking) return;
+  ticking = true;
+  runCampaignTick()
+    .catch((err: unknown) => log.error({ err }, "campaign tick failed"))
+    .finally(() => (ticking = false));
+}, 3_000);
+
 // Optional health endpoint for container orchestration and end-to-end tests.
 const healthPort = Number(process.env.WORKER_HEALTH_PORT || 0);
 const health = healthPort
@@ -98,6 +117,7 @@ log.info("worker started");
 async function shutdown(signal: string) {
   log.info({ signal }, "worker shutting down");
   clearInterval(sweepTimer);
+  clearInterval(campaignTimer);
   health?.close();
   await Promise.all(workers.map((w) => w.close()));
   process.exit(0);

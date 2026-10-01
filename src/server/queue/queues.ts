@@ -11,6 +11,7 @@ export interface WebhookJobData {
 }
 export interface OutboundJobData {
   messageId: string;
+  whatsappAccountId?: string;
 }
 export interface MediaJobData {
   mediaObjectId: string;
@@ -80,10 +81,10 @@ export async function enqueueWebhookEvents(eventIds: string[]) {
   );
 }
 
-export async function enqueueOutboundMessages(messageIds: string[], opts: JobsOptions = {}) {
+export async function enqueueOutboundMessages(messages: OutboundJobData[], opts: JobsOptions = {}) {
   await enqueue<OutboundJobData>(
     OUTBOUND_QUEUE,
-    messageIds.map((messageId) => ({ id: messageId, data: { messageId } })),
+    messages.map((data) => ({ id: data.messageId, data })),
     opts,
   );
 }

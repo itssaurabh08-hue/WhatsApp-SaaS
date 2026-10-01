@@ -35,6 +35,9 @@ export interface CreateOutboundInput {
   sentById?: string | null;
   idempotencyKey?: string | null;
   contextMessageId?: string | null;
+  campaignId?: string | null;
+  /** Default true. Campaign dispatch enqueues in bulk itself. */
+  enqueue?: boolean;
 }
 
 /** Template params as stored on the message. */
@@ -169,6 +172,7 @@ export async function createOutboundMessage(input: CreateOutboundInput) {
           idempotencyKey: input.idempotencyKey ?? null,
           status: "QUEUED",
           sentById: input.sentById ?? null,
+          campaignId: input.campaignId ?? null,
           queuedAt: now,
         },
       });
@@ -189,7 +193,9 @@ export async function createOutboundMessage(input: CreateOutboundInput) {
     }
     throw error;
   }
-  await enqueueOutboundMessages([message.id]);
+  if (input.enqueue !== false) {
+    await enqueueOutboundMessages([{ messageId: message.id, whatsappAccountId: account.id }]);
+  }
   return message;
 }
 
@@ -428,10 +434,12 @@ export const UNCONFIRMED_AFTER_MS = 60 * 60 * 1000;
 export async function reconcileOutbound(now = new Date()) {
   const stuckQueued = await systemDb.message.findMany({
     where: { status: "QUEUED", direction: "OUTBOUND", queuedAt: { lt: new Date(now.getTime() - 5 * 60_000) } },
-    select: { id: true },
+    select: { id: true, whatsappAccountId: true },
     take: 500,
   });
-  if (stuckQueued.length > 0) await enqueueOutboundMessages(stuckQueued.map((m) => m.id));
+  if (stuckQueued.length > 0) {
+    await enqueueOutboundMessages(stuckQueued.map((m) => ({ messageId: m.id, whatsappAccountId: m.whatsappAccountId })));
+  }
 
   const unconfirmed = await systemDb.message.findMany({
     where: { status: "SENDING", updatedAt: { lt: new Date(now.getTime() - UNCONFIRMED_AFTER_MS) } },
