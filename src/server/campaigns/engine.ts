@@ -11,7 +11,7 @@ import { enqueueOutboundMessages, type OutboundJobData } from "@/server/queue/qu
 import { sendRatePerSecond } from "@/server/queue/send-rate";
 import { getRedis } from "@/server/redis";
 import { readCredential } from "@/server/whatsapp/credentials";
-import { audienceWhere } from "./service";
+import { audienceWhere } from "./audience";
 
 /**
  * Campaign engine, run by the worker every few seconds:
@@ -193,7 +193,12 @@ export async function dispatchBatch(workspaceId: string, campaignId: string) {
         workspaceId,
         contactId: r.contactId,
         whatsappAccountId: account.id,
-        request: { kind: "template", templateId: template.id, values, headerMediaObjectId: campaign.headerMediaObjectId },
+        request: {
+          kind: "template",
+          templateId: template.id,
+          values,
+          headerMediaObjectId: campaign.headerMediaObjectId,
+        },
         sentById: null,
         campaignId,
         idempotencyKey: `campaign:${campaignId}:${r.contactId}`,

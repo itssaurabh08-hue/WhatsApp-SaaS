@@ -34,7 +34,9 @@ async function setup() {
   const account = await db.whatsAppAccount.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId } });
   await syncTemplates(ctx, account.id);
   const utility = await db.template.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId, name: "order_update" } });
-  const marketing = await db.template.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId, name: "spring_sale" } });
+  const marketing = await db.template.findFirstOrThrow({
+    where: { workspaceId: ctx.workspaceId, name: "spring_sale" },
+  });
   const list = await db.contactList.create({ data: { workspaceId: ctx.workspaceId, name: "Customers" } });
   return { ctx, account, utility, marketing, list };
 }
@@ -97,7 +99,10 @@ describe("campaigns", () => {
     await expect(
       createCampaign(s.ctx, utilityInput(s, { variableMapping: { header: {}, body: {}, buttons: {} } })),
     ).rejects.toMatchObject({ userMessage: expect.stringContaining("{{1}}") });
-    await db.template.updateMany({ where: { id: s.utility.id, workspaceId: s.ctx.workspaceId }, data: { status: "PAUSED" } });
+    await db.template.updateMany({
+      where: { id: s.utility.id, workspaceId: s.ctx.workspaceId },
+      data: { status: "PAUSED" },
+    });
     await expect(createCampaign(s.ctx, utilityInput(s))).rejects.toMatchObject({
       userMessage: expect.stringContaining("approved"),
     });
@@ -111,16 +116,22 @@ describe("campaigns", () => {
     await contact(s.ctx, s.list.id, "Ben", "UNKNOWN");
     await contact(s.ctx, s.list.id, "Cy", "OPTED_OUT");
     const audience = { type: "list" as const, id: s.list.id };
-    expect(await estimateAudience(s.ctx, { audience, templateId: s.utility.id, includeUnknownOptIn: false })).toMatchObject({
+    expect(
+      await estimateAudience(s.ctx, { audience, templateId: s.utility.id, includeUnknownOptIn: false }),
+    ).toMatchObject({
       total: 3,
       eligible: 2,
       optedOut: 1,
     });
-    expect(await estimateAudience(s.ctx, { audience, templateId: s.marketing.id, includeUnknownOptIn: false })).toMatchObject({
+    expect(
+      await estimateAudience(s.ctx, { audience, templateId: s.marketing.id, includeUnknownOptIn: false }),
+    ).toMatchObject({
       eligible: 1,
       unknownExcluded: 1,
     });
-    expect(await estimateAudience(s.ctx, { audience, templateId: s.marketing.id, includeUnknownOptIn: true })).toMatchObject({
+    expect(
+      await estimateAudience(s.ctx, { audience, templateId: s.marketing.id, includeUnknownOptIn: true }),
+    ).toMatchObject({
       eligible: 2,
     });
   });
@@ -150,7 +161,9 @@ describe("campaigns", () => {
     expect(bodies.some((b) => b.includes('"text":"there"'))).toBe(true); // fallback for the missing first name
     expect(bodies.every((b) => b.includes('"text":"A-100"'))).toBe(true);
 
-    const recipients = await db.campaignRecipient.findMany({ where: { workspaceId: s.ctx.workspaceId, campaignId: campaign.id } });
+    const recipients = await db.campaignRecipient.findMany({
+      where: { workspaceId: s.ctx.workspaceId, campaignId: campaign.id },
+    });
     expect(recipients.map((r) => r.status).sort()).toEqual(["QUEUED", "QUEUED", "SKIPPED"]);
     expect(recipients.find((r) => r.status === "SKIPPED")?.skipReason).toBe("Opted out");
 
@@ -182,20 +195,35 @@ describe("campaigns", () => {
 
     // A second marketing campaign: Bo opts out between snapshot and dispatch.
     process.env.WHATSAPP_SEND_RATE_PER_SECOND = "0.1"; // budget of 1 message per dispatch
-    const second = await createCampaign(s.ctx, { ...utilityInput(s), name: "Second", templateId: s.marketing.id, variableMapping: {
-      header: {},
-      body: { first_name: { source: "static", value: "friend" } },
-      buttons: { "0": { source: "static", value: "x" } },
-    } });
+    const second = await createCampaign(s.ctx, {
+      ...utilityInput(s),
+      name: "Second",
+      templateId: s.marketing.id,
+      variableMapping: {
+        header: {},
+        body: { first_name: { source: "static", value: "friend" } },
+        buttons: { "0": { source: "static", value: "x" } },
+      },
+    });
     await launchCampaign(s.ctx, second.id, null);
     await runCampaignTick();
     expect(await db.message.count({ where: { workspaceId: s.ctx.workspaceId, campaignId: second.id } })).toBe(1);
-    await db.message.updateMany({ where: { workspaceId: s.ctx.workspaceId, campaignId: second.id }, data: { status: "ACCEPTED" } });
-    const firstQueued = await db.campaignRecipient.findFirstOrThrow({ where: { workspaceId: s.ctx.workspaceId, campaignId: second.id, status: "QUEUED" } });
+    await db.message.updateMany({
+      where: { workspaceId: s.ctx.workspaceId, campaignId: second.id },
+      data: { status: "ACCEPTED" },
+    });
+    const firstQueued = await db.campaignRecipient.findFirstOrThrow({
+      where: { workspaceId: s.ctx.workspaceId, campaignId: second.id, status: "QUEUED" },
+    });
     const other = firstQueued.contactId === ana.id ? bo : ana;
-    await db.contact.updateMany({ where: { id: other.id, workspaceId: s.ctx.workspaceId }, data: { optInStatus: "OPTED_OUT" } });
+    await db.contact.updateMany({
+      where: { id: other.id, workspaceId: s.ctx.workspaceId },
+      data: { optInStatus: "OPTED_OUT" },
+    });
     await dispatchBatch(s.ctx.workspaceId, second.id);
-    const skipped = await db.campaignRecipient.findFirstOrThrow({ where: { workspaceId: s.ctx.workspaceId, campaignId: second.id, contactId: other.id } });
+    const skipped = await db.campaignRecipient.findFirstOrThrow({
+      where: { workspaceId: s.ctx.workspaceId, campaignId: second.id, contactId: other.id },
+    });
     expect(skipped).toMatchObject({ status: "SKIPPED", skipReason: "Opted out" });
   });
 
@@ -271,20 +299,50 @@ describe("campaigns", () => {
     const hook = async (value: Record<string, unknown>) => {
       const raw = JSON.stringify({
         object: "whatsapp_business_account",
-        entry: [{ id: WABA_ID, changes: [{ field: "messages", value: { messaging_product: "whatsapp", metadata: { phone_number_id: PHONE_ID }, ...value } }] }],
+        entry: [
+          {
+            id: WABA_ID,
+            changes: [
+              {
+                field: "messages",
+                value: { messaging_product: "whatsapp", metadata: { phone_number_id: PHONE_ID }, ...value },
+              },
+            ],
+          },
+        ],
       });
-      await ingestMetaWebhook(raw, `sha256=${createHmac("sha256", "test-app-secret").update(raw).digest("hex")}`, "test-app-secret");
-      for (const e of await systemDb.webhookEvent.findMany({ where: { status: "RECEIVED" } })) await processWebhookEvent(e.id);
+      await ingestMetaWebhook(
+        raw,
+        `sha256=${createHmac("sha256", "test-app-secret").update(raw).digest("hex")}`,
+        "test-app-secret",
+      );
+      for (const e of await systemDb.webhookEvent.findMany({ where: { status: "RECEIVED" } }))
+        await processWebhookEvent(e.id);
     };
-    await hook({ statuses: [{ id: anaMsg.whatsappMessageId, status: "read", timestamp: String(now), recipient_id: "16505551234" }] });
+    await hook({
+      statuses: [{ id: anaMsg.whatsappMessageId, status: "read", timestamp: String(now), recipient_id: "16505551234" }],
+    });
     await hook({
       statuses: [
-        { id: benMsg.whatsappMessageId, status: "failed", timestamp: String(now), errors: [{ code: 131026, title: "Undeliverable" }] },
+        {
+          id: benMsg.whatsappMessageId,
+          status: "failed",
+          timestamp: String(now),
+          errors: [{ code: 131026, title: "Undeliverable" }],
+        },
       ],
     });
     await hook({
       contacts: [{ profile: { name: "Ana" }, wa_id: "16505551234" }],
-      messages: [{ from: "16505551234", id: "wamid.reply1", timestamp: String(now + 5), type: "text", text: { body: "Thanks!" } }],
+      messages: [
+        {
+          from: "16505551234",
+          id: "wamid.reply1",
+          timestamp: String(now + 5),
+          type: "text",
+          text: { body: "Thanks!" },
+        },
+      ],
     });
     const c = await getCampaign(s.ctx, campaign.id);
     expect(c.stats).toMatchObject({ sent: 1, delivered: 1, read: 1, failed: 1, replied: 1 });

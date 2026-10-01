@@ -81,7 +81,11 @@ export function resolveValues(
   mapping: VariableMapping,
   required: { header: string[]; body: string[]; buttons: number[] },
 ) {
-  const values = { header: {} as Record<string, string>, body: {} as Record<string, string>, buttons: {} as Record<string, string> };
+  const values = {
+    header: {} as Record<string, string>,
+    body: {} as Record<string, string>,
+    buttons: {} as Record<string, string>,
+  };
   const missing: string[] = [];
   const fill = (section: "header" | "body" | "buttons", names: string[]) => {
     for (const name of names) {

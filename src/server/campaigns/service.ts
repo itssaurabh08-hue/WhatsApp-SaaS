@@ -1,14 +1,13 @@
 import "server-only";
 import type { CampaignStatus, Prisma } from "@/generated/prisma/client";
 import { audienceSchema, variableMappingSchema, type Audience, type VariableMapping } from "@/lib/campaigns";
-import { segmentDefinitionSchema } from "@/lib/segments";
 import { isSendable, templateRequirements, type MetaTemplateComponent } from "@/lib/templates";
 import { audit } from "@/server/audit/audit";
 import { requirePermission, type TenantContext } from "@/server/authz/tenant";
-import { segmentWhere } from "@/server/contacts/where";
 import { db } from "@/server/db/client";
 import { AppError } from "@/server/errors";
 import type { RequestMeta } from "@/server/request-meta";
+import { audienceWhere } from "./audience";
 
 type Meta = Partial<RequestMeta>;
 
@@ -22,29 +21,6 @@ export interface CampaignInput {
   includeUnknownOptIn: boolean;
 }
 
-/** Contacts matching an audience, before opt-in filtering. Always scoped to the workspace. */
-export async function audienceWhere(workspaceId: string, audience: Audience): Promise<Prisma.ContactWhereInput> {
-  switch (audience.type) {
-    case "all":
-      return { workspaceId };
-    case "list":
-      return { workspaceId, lists: { some: { listId: audience.id, workspaceId } } };
-    case "tag":
-      return { workspaceId, tags: { some: { tagId: audience.id, workspaceId } } };
-    case "segment": {
-      const segment = await db.segment.findFirst({ where: { id: audience.id, workspaceId } });
-      if (!segment) throw new AppError("VALIDATION", { userMessage: "That segment no longer exists." });
-      return segmentWhere(workspaceId, segmentDefinitionSchema.parse(segment.definition));
-    }
-  }
-}
-
-/** Opt-in rule: never OPTED_OUT; marketing needs OPTED_IN unless unknown is explicitly allowed. */
-export function eligibleOptIn(category: string, includeUnknownOptIn: boolean): Prisma.ContactWhereInput {
-  if (category === "MARKETING" && !includeUnknownOptIn) return { optInStatus: "OPTED_IN" };
-  return { optInStatus: { not: "OPTED_OUT" } };
-}
-
 export async function estimateAudience(
   ctx: TenantContext,
   input: { audience: Audience; templateId?: string | null; includeUnknownOptIn: boolean },
@@ -53,7 +29,10 @@ export async function estimateAudience(
   const audience = audienceSchema.parse(input.audience);
   const where = await audienceWhere(ctx.workspaceId, audience);
   const template = input.templateId
-    ? await db.template.findFirst({ where: { id: input.templateId, workspaceId: ctx.workspaceId }, select: { category: true } })
+    ? await db.template.findFirst({
+        where: { id: input.templateId, workspaceId: ctx.workspaceId },
+        select: { category: true },
+      })
     : null;
   const category = template?.category ?? "UTILITY";
   const [total, optedOut, unknown] = await Promise.all([
@@ -67,21 +46,29 @@ export async function estimateAudience(
 
 async function validateInput(ctx: TenantContext, input: CampaignInput) {
   const name = input.name.trim();
-  if (!name || name.length > 120) throw new AppError("VALIDATION", { userMessage: "Enter a campaign name (up to 120 characters)." });
+  if (!name || name.length > 120)
+    throw new AppError("VALIDATION", { userMessage: "Enter a campaign name (up to 120 characters)." });
   const audience = audienceSchema.parse(input.audience);
   const mapping = variableMappingSchema.parse(input.variableMapping);
-  const account = await db.whatsAppAccount.findFirst({ where: { id: input.whatsappAccountId, workspaceId: ctx.workspaceId } });
+  const account = await db.whatsAppAccount.findFirst({
+    where: { id: input.whatsappAccountId, workspaceId: ctx.workspaceId },
+  });
   if (!account || account.status !== "CONNECTED") {
     throw new AppError("VALIDATION", { userMessage: "Choose a connected WhatsApp number." });
   }
   const template = await db.template.findFirst({ where: { id: input.templateId, workspaceId: ctx.workspaceId } });
   if (!template || template.businessAccountId !== account.businessAccountId) {
-    throw new AppError("VALIDATION", { userMessage: "Choose a template from this number's WhatsApp Business account." });
+    throw new AppError("VALIDATION", {
+      userMessage: "Choose a template from this number's WhatsApp Business account.",
+    });
   }
-  if (!isSendable(template.status)) throw new AppError("VALIDATION", { userMessage: "Campaigns can only use approved templates." });
+  if (!isSendable(template.status))
+    throw new AppError("VALIDATION", { userMessage: "Campaigns can only use approved templates." });
   const req = templateRequirements(template.components as unknown as MetaTemplateComponent[]);
   if (req.unsupported) {
-    throw new AppError("VALIDATION", { userMessage: `This template uses a ${req.unsupported}, which campaigns cannot send yet.` });
+    throw new AppError("VALIDATION", {
+      userMessage: `This template uses a ${req.unsupported}, which campaigns cannot send yet.`,
+    });
   }
   const unmapped = [
     ...req.header.filter((v) => !mapping.header[v]).map((v) => `header {{${v}}}`),
@@ -93,9 +80,14 @@ async function validateInput(ctx: TenantContext, input: CampaignInput) {
   }
   if (req.headerMedia) {
     const media = input.headerMediaObjectId
-      ? await db.mediaObject.findFirst({ where: { id: input.headerMediaObjectId, workspaceId: ctx.workspaceId, status: "STORED" } })
+      ? await db.mediaObject.findFirst({
+          where: { id: input.headerMediaObjectId, workspaceId: ctx.workspaceId, status: "STORED" },
+        })
       : null;
-    if (!media) throw new AppError("VALIDATION", { userMessage: `Upload the ${req.headerMedia.toLowerCase()} for the template header.` });
+    if (!media)
+      throw new AppError("VALIDATION", {
+        userMessage: `Upload the ${req.headerMedia.toLowerCase()} for the template header.`,
+      });
   }
   if (audience.type !== "all") {
     const exists =
@@ -126,7 +118,13 @@ export async function createCampaign(ctx: TenantContext, input: CampaignInput, m
     },
   });
   await audit(
-    { action: "campaign.created", workspaceId: ctx.workspaceId, actorUserId: ctx.user.id, entityType: "Campaign", entityId: campaign.id },
+    {
+      action: "campaign.created",
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.user.id,
+      entityType: "Campaign",
+      entityId: campaign.id,
+    },
     meta,
   );
   return campaign;
@@ -145,7 +143,8 @@ export async function launchCampaign(ctx: TenantContext, id: string, scheduledAt
     throw new AppError("FORBIDDEN", { userMessage: "Verify your email address before sending campaigns." });
   }
   const campaign = await requireCampaign(ctx, id);
-  if (campaign.status !== "DRAFT") throw new AppError("CONFLICT", { userMessage: "This campaign has already been launched." });
+  if (campaign.status !== "DRAFT")
+    throw new AppError("CONFLICT", { userMessage: "This campaign has already been launched." });
   if (scheduledAt && scheduledAt.getTime() > Date.now() + 90 * 24 * 3600 * 1000) {
     throw new AppError("VALIDATION", { userMessage: "Schedule campaigns at most 90 days ahead." });
   }
@@ -191,12 +190,19 @@ const TRANSITIONS: Record<"pause" | "resume" | "cancel", { from: CampaignStatus[
  * stopped; cancel marks every recipient not yet queued as cancelled. Messages already
  * in the send queue (a few seconds' worth, see engine.ts) still go out.
  */
-export async function changeCampaignState(ctx: TenantContext, id: string, action: "pause" | "resume" | "cancel", meta: Meta = {}) {
+export async function changeCampaignState(
+  ctx: TenantContext,
+  id: string,
+  action: "pause" | "resume" | "cancel",
+  meta: Meta = {},
+) {
   requirePermission(ctx, "campaigns:send");
   const campaign = await requireCampaign(ctx, id);
   const t = TRANSITIONS[action];
   if (!t.from.includes(campaign.status)) {
-    throw new AppError("CONFLICT", { userMessage: `A ${campaign.status.toLowerCase()} campaign cannot be ${action}d.` });
+    throw new AppError("CONFLICT", {
+      userMessage: `A ${campaign.status.toLowerCase()} campaign cannot be ${action}d.`,
+    });
   }
   // A paused campaign that never started resumes as scheduled.
   const to = action === "resume" && !campaign.startedAt ? "SCHEDULED" : t.to;
@@ -204,7 +210,8 @@ export async function changeCampaignState(ctx: TenantContext, id: string, action
     where: { id, workspaceId: ctx.workspaceId, status: { in: t.from } },
     data: { status: to, ...(action === "cancel" ? { cancelledAt: new Date(), completedAt: new Date() } : {}) },
   });
-  if (updated.count !== 1) throw new AppError("CONFLICT", { userMessage: "The campaign changed meanwhile. Reload and try again." });
+  if (updated.count !== 1)
+    throw new AppError("CONFLICT", { userMessage: "The campaign changed meanwhile. Reload and try again." });
   if (action === "cancel") {
     await db.campaignRecipient.updateMany({
       where: { workspaceId: ctx.workspaceId, campaignId: id, status: "PENDING" },
@@ -212,7 +219,13 @@ export async function changeCampaignState(ctx: TenantContext, id: string, action
     });
   }
   await audit(
-    { action: AUDIT_ACTION[action], workspaceId: ctx.workspaceId, actorUserId: ctx.user.id, entityType: "Campaign", entityId: id },
+    {
+      action: AUDIT_ACTION[action],
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.user.id,
+      entityType: "Campaign",
+      entityId: id,
+    },
     meta,
   );
 }
@@ -225,7 +238,14 @@ export async function deleteCampaign(ctx: TenantContext, id: string, meta: Meta 
   }
   await db.campaign.deleteMany({ where: { id, workspaceId: ctx.workspaceId } });
   await audit(
-    { action: "campaign.deleted", workspaceId: ctx.workspaceId, actorUserId: ctx.user.id, entityType: "Campaign", entityId: id, metadata: { name: campaign.name } },
+    {
+      action: "campaign.deleted",
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.user.id,
+      entityType: "Campaign",
+      entityId: id,
+      metadata: { name: campaign.name },
+    },
     meta,
   );
 }
@@ -241,7 +261,10 @@ export async function listCampaigns(ctx: TenantContext) {
       whatsappAccount: { select: { displayPhoneNumber: true } },
     },
   });
-  const stats = await campaignStatsMany(ctx.workspaceId, campaigns.map((c) => c.id));
+  const stats = await campaignStatsMany(
+    ctx.workspaceId,
+    campaigns.map((c) => c.id),
+  );
   return campaigns.map((c) => ({ ...c, stats: stats.get(c.id) ?? emptyStats() }));
 }
 
@@ -352,7 +375,12 @@ export async function getCampaign(ctx: TenantContext, id: string) {
 
 export type RecipientFilter = "all" | "pending" | "skipped" | "failed" | "delivered" | "read" | "replied";
 
-export async function listRecipients(ctx: TenantContext, campaignId: string, filter: RecipientFilter = "all", page = 1) {
+export async function listRecipients(
+  ctx: TenantContext,
+  campaignId: string,
+  filter: RecipientFilter = "all",
+  page = 1,
+) {
   requirePermission(ctx, "campaigns:read");
   const where: Prisma.CampaignRecipientWhereInput = { workspaceId: ctx.workspaceId, campaignId };
   if (filter === "pending") where.status = "PENDING";
