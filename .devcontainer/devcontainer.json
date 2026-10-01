@@ -1,0 +1,15 @@
+{
+  "name": "WhatsFlow",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "postCreateCommand": "bash scripts/codespace-setup.sh",
+  "forwardPorts": [3000, "mailpit:8025"],
+  "portsAttributes": {
+    "3000": { "label": "App", "onAutoForward": "notify" },
+    "mailpit:8025": { "label": "Emails", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["docs/CODESPACES.md"] }
+  }
+}

@@ -8,6 +8,7 @@ The product name and branding live in [`src/config/brand.ts`](src/config/brand.t
 
 ## Documentation
 
+- `docs/CODESPACES.md`: run the app in GitHub Codespaces for free testing.
 - `docs/DEPLOY_RENDER.md`: put the app online for free on Render (testing).
 
 - [Architecture](docs/ARCHITECTURE.md)

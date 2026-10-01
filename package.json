@@ -23,7 +23,8 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "worker": "tsx --conditions=react-server worker/index.ts",
-    "build:worker": "esbuild worker/index.ts --bundle --platform=node --target=node22 --format=esm --conditions=react-server --packages=external --tsconfig=tsconfig.json --outfile=dist/worker.mjs --log-level=warning"
+    "build:worker": "esbuild worker/index.ts --bundle --platform=node --target=node22 --format=esm --conditions=react-server --packages=external --tsconfig=tsconfig.json --outfile=dist/worker.mjs --log-level=warning",
+    "codespace": "bash scripts/codespace-start.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1144.0",
