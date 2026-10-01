@@ -1,0 +1,401 @@
+// Phase 1: identity, sessions, workspaces, membership, audit.
+// Phase 2: contacts, tags, lists, notes, custom fields, segments, CSV imports.
+// See docs/DATABASE.md.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  AGENT
+  ANALYST
+}
+
+enum OptInStatus {
+  UNKNOWN
+  OPTED_IN
+  OPTED_OUT
+}
+
+enum ContactSource {
+  MANUAL
+  IMPORT
+  API
+  INBOUND
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+}
+
+enum ImportStatus {
+  UPLOADED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum OnboardingStep {
+  BUSINESS
+  WHATSAPP
+  CONTACTS
+  TEMPLATES
+  DONE
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique // stored lowercased
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  avatarUrl       String?
+  isPlatformAdmin Boolean   @default(false)
+  isDemo          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions                Session[]
+  oauthAccounts           OAuthAccount[]
+  memberships             WorkspaceMember[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  invitesSent             WorkspaceInvite[]        @relation("InviteSender")
+  auditLogs               AuditLog[]
+  contactNotes            ContactNote[]
+  importJobs              ImportJob[]
+}
+
+// Reserved for Google/Microsoft/SSO login. Not used in Phase 1.
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// The id is the SHA-256 hash of the session token held in the cookie, so a
+// database leak does not yield usable session tokens.
+model Session {
+  id         String   @id
+  userId     String
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Workspace {
+  id             String         @id @default(cuid())
+  name           String
+  slug           String         @unique
+  businessName   String?
+  logoUrl        String?
+  timezone       String         @default("UTC")
+  currency       String         @default("USD")
+  // ISO 3166-1 alpha-2, used to interpret phone numbers entered without a country code.
+  defaultCountry String?
+  planId         String         @default("free")
+  onboardingStep OnboardingStep @default(BUSINESS)
+  isDemo         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  members         WorkspaceMember[]
+  invites         WorkspaceInvite[]
+  auditLogs       AuditLog[]
+  contacts        Contact[]
+  tags            Tag[]
+  contactTags     ContactTag[]
+  contactLists    ContactList[]
+  listMembers     ContactListMember[]
+  contactNotes    ContactNote[]
+  customFields    CustomFieldDefinition[]
+  segments        Segment[]
+  importJobs      ImportJob[]
+  importRowErrors ImportRowError[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(cuid())
+  workspaceId String
+  email       String
+  role        WorkspaceRole
+  tokenHash   String        @unique
+  invitedById String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User?     @relation("InviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, email])
+}
+
+// Append-only. workspaceId is null for account-level events such as login.
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorUserId String?
+  action      String
+  entityType  String?
+  entityId    String?
+  ipAddress   String?
+  userAgent   String?
+  requestId   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: contacts
+// ---------------------------------------------------------------------------
+
+model Contact {
+  id                    String        @id @default(cuid())
+  workspaceId           String
+  // As entered by the user or file; normalizedPhoneNumber (E.164) is the identity.
+  phoneNumber           String
+  normalizedPhoneNumber String
+  firstName             String?
+  lastName              String?
+  email                 String?
+  company               String?
+  country               String? // ISO 3166-1 alpha-2
+  profileImageUrl       String?
+  optInStatus           OptInStatus   @default(UNKNOWN)
+  optInSource           String?
+  optInAt               DateTime?
+  optedOutAt            DateTime?
+  customFields          Json          @default("{}")
+  source                ContactSource @default(MANUAL)
+  // Maintained by messaging (Phase 4).
+  lastMessageAt         DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tags      ContactTag[]
+  lists     ContactListMember[]
+  notes     ContactNote[]
+
+  @@unique([workspaceId, normalizedPhoneNumber])
+  @@index([workspaceId, createdAt(sort: Desc), id])
+  @@index([workspaceId, firstName, id])
+  @@index([workspaceId, optInStatus])
+  @@index([workspaceId, email])
+  @@index([workspaceId, lastMessageAt])
+  @@index([customFields], type: Gin)
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String   @default("gray")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contacts  ContactTag[]
+
+  @@unique([workspaceId, name])
+}
+
+// workspaceId is denormalized onto join tables so every tenant table can be scoped directly.
+model ContactTag {
+  workspaceId String
+  contactId   String
+  tagId       String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@index([workspaceId, tagId])
+}
+
+model ContactList {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members   ContactListMember[]
+
+  @@unique([workspaceId, name])
+}
+
+model ContactListMember {
+  workspaceId String
+  listId      String
+  contactId   String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  list      ContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact   Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([listId, contactId])
+  @@index([workspaceId, contactId])
+}
+
+// Internal notes about a contact. Never sent to the contact.
+model ContactNote {
+  id          String   @id @default(cuid())
+  workspaceId String
+  contactId   String
+  authorId    String?
+  body        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author    User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, contactId, createdAt(sort: Desc)])
+}
+
+model CustomFieldDefinition {
+  id          String          @id @default(cuid())
+  workspaceId String
+  // Key used in Contact.customFields, CSV mapping and template variables.
+  key         String
+  label       String
+  type        CustomFieldType @default(TEXT)
+  createdAt   DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
+}
+
+// Saved audience. `definition` is a validated condition tree (see src/lib/segments.ts).
+model Segment {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  definition  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+// CSV import. The uploaded file is kept only until the import runs, then cleared.
+model ImportJob {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  createdById  String?
+  fileName     String
+  fileSize     Int
+  status       ImportStatus @default(UPLOADED)
+  csvContent   String?
+  headers      Json
+  rowCount     Int
+  mapping      Json?
+  options      Json?
+  createdCount Int          @default(0)
+  updatedCount Int          @default(0)
+  skippedCount Int          @default(0)
+  failedCount  Int          @default(0)
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  errors    ImportRowError[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+model ImportRowError {
+  id          String @id @default(cuid())
+  workspaceId String
+  importJobId String
+  rowNumber   Int
+  data        Json
+  errors      String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId, rowNumber])
+}

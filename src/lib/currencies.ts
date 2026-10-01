@@ -1,0 +1,31 @@
+// ISO 4217 codes offered in settings. Extend as needed; stored as plain text.
+export const CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "INR",
+  "AED",
+  "AUD",
+  "BRL",
+  "CAD",
+  "CHF",
+  "CNY",
+  "EGP",
+  "HKD",
+  "IDR",
+  "JPY",
+  "KES",
+  "MXN",
+  "MYR",
+  "NGN",
+  "NZD",
+  "PHP",
+  "PKR",
+  "SAR",
+  "SGD",
+  "THB",
+  "TRY",
+  "ZAR",
+] as const;
+
+export type Currency = (typeof CURRENCIES)[number];
