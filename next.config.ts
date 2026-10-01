@@ -13,6 +13,8 @@ function allowedActionOrigins(): string[] {
   const { CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
   if (CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN) {
     hosts.push(`${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`);
+    // The Codespaces port-forwarding proxy rewrites the browser's Origin header to localhost:3000.
+    hosts.push("localhost:3000");
   }
   return hosts;
 }
