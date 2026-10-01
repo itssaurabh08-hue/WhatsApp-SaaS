@@ -8,6 +8,8 @@ The product name and branding live in [`src/config/brand.ts`](src/config/brand.t
 
 ## Documentation
 
+- `docs/DEPLOY_RENDER.md`: put the app online for free on Render (testing).
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database schema](docs/DATABASE.md)
 - [Roadmap](docs/ROADMAP.md)

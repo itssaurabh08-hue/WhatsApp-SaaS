@@ -1,0 +1,62 @@
+# Render Blueprint: one-click setup on Render's free plan (see docs/DEPLOY_RENDER.md).
+# Creates the app (web + worker in one container), a Postgres database and a Key Value (Redis) store.
+services:
+  - type: web
+    name: whatsflow
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: whatsflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsflow-redis
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY_ID
+        value: k1
+      - key: LOG_LEVEL
+        value: info
+      - key: QUEUE_PREFIX
+        value: whatsflow
+      # Email (for example Brevo: smtp-relay.brevo.com, port 587)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # WhatsApp: leave empty at first; fill in after setting up the Meta app (docs/META_SETUP_GUIDE.md).
+      - key: WHATSAPP_APP_ID
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_CONFIG_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+  - type: keyvalue
+    name: whatsflow-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: [] # only reachable from Render's private network
+
+databases:
+  - name: whatsflow-db
+    plan: free
+    databaseName: whatsflow
+    user: whatsflow
