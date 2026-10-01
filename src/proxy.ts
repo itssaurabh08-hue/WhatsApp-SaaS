@@ -14,15 +14,21 @@ const SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 const PROTECTED_PREFIXES = ["/w/", "/onboarding"];
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/;
 
-function buildCsp(nonce: string, isDev: boolean) {
+// Pages that launch Meta's Embedded Signup need the Facebook JS SDK and its frames.
+const FACEBOOK_SDK_PAGES = /^\/w\/[^/]+\/(setup|settings\/whatsapp)\/?$/;
+
+function buildCsp(nonce: string, isDev: boolean, allowFacebook: boolean) {
+  const fb = allowFacebook ? " https://connect.facebook.net https://*.facebook.com" : "";
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // With 'strict-dynamic', scripts are trusted via the nonce; the Facebook SDK is inserted by our own nonce'd code.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}${allowFacebook ? " https://connect.facebook.net" : ""}`,
     // Inline style attributes are used by Radix/Sonner positioning; scripts remain nonce-locked.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data: https:",
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src 'self'${fb}`,
+    ...(allowFacebook ? ["frame-src https://*.facebook.com"] : []),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -49,7 +55,7 @@ export function proxy(request: NextRequest) {
   }
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = buildCsp(nonce, isDev);
+  const csp = buildCsp(nonce, isDev, FACEBOOK_SDK_PAGES.test(pathname));
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-request-id", requestId);

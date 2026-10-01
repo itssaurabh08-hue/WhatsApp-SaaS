@@ -4,7 +4,8 @@ import { dirname } from "node:path";
 import { simpleParser } from "mailparser";
 import pg from "pg";
 import { SMTPServer } from "smtp-server";
-import { E2E_DATABASE_URL, EMAIL_LOG, SMTP_SINK_PORT } from "./env";
+import { E2E_DATABASE_URL, EMAIL_LOG, FAKE_GRAPH_PORT, SMTP_SINK_PORT } from "./env";
+import { startFakeGraph } from "./fake-graph-server";
 
 interface CapturedEmail {
   to: string;
@@ -53,8 +54,10 @@ export default async function globalSetup() {
     },
   });
   await new Promise<void>((resolve) => server.listen(SMTP_SINK_PORT, "127.0.0.1", resolve));
+  const graph = await startFakeGraph(FAKE_GRAPH_PORT);
 
   return async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => graph.close(() => resolve()));
   };
 }

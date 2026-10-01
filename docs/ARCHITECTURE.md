@@ -86,7 +86,7 @@ src/
       (shell)/         sidebar app: dashboard, inbox, contacts, campaigns, ... settings
     api/health         liveness/readiness
     api/v1/            (later) public REST API, API-key auth
-    api/webhooks/meta  (later) Meta webhook
+    api/webhooks/meta  Meta webhook (verification + signed deliveries)
   components/
     ui/                shadcn/ui primitives
     app/               product components (shell, forms, empty states)
@@ -106,11 +106,14 @@ src/
     audit/             audit log writer
     logging/           pino logger
     rate-limit.ts      Redis fixed-window limiter
-    providers/         (later) whatsapp/, billing/, storage/
-    queue/             (later) BullMQ queues and jobs
-    crypto/            (later) envelope encryption for secrets
+    providers/whatsapp WhatsAppProvider interface + Meta Cloud API implementation
+    whatsapp/          connection service (Embedded Signup onboarding), credentials
+    webhooks/          Meta webhook ingest + processor
+    queue/             BullMQ queues
+    crypto/            AES-256-GCM secrets
+    providers/         (later) billing/, storage/
   generated/prisma     generated client (git-ignored)
-worker/                (later) BullMQ worker entrypoint
+worker/                BullMQ worker entrypoint (npm run worker)
 prisma/                schema.prisma, migrations/, seed.ts
 tests/
   unit/, integration/, e2e/, support/
@@ -144,25 +147,28 @@ Roles map to permission sets in one file (`server/authz/permissions.ts`). UI and
 
 ## 6. WhatsApp integration
 
-All Meta calls go through `WhatsAppProvider` (interface) implemented by `MetaCloudProvider`:
+**Connection model (decided 2026-10-01):** the platform is a Meta **Tech Provider** and businesses connect with **Embedded Signup** ("Connect with Facebook"). There is one platform Meta app (`WHATSAPP_APP_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_CONFIG_ID`); each business's own token comes from the signup flow. Setup steps for the platform owner are in `docs/META_SETUP_GUIDE.md`.
 
-```
-connectAccount, getPhoneNumberStatus, sendTextMessage, sendTemplateMessage,
-sendMediaMessage, uploadMedia, downloadMedia, listTemplates, getTemplate,
-createTemplate, deleteTemplate, verifyWebhookSignature, parseWebhook
-```
+Flow:
 
-`parseWebhook` turns a raw Meta payload into provider-neutral events (`InboundMessage`, `MessageStatusUpdate`, `TemplateStatusUpdate`, `AccountUpdate`). The rest of the app only sees these neutral types, which is what allows other channels later.
+1. Browser loads the Facebook SDK (only on the setup and WhatsApp settings pages, which get a wider CSP), calls `FB.login` with the configuration ID.
+2. Meta's window returns the WABA ID and phone number ID (`postMessage`, origin checked to be facebook.com) and a code (30 s TTL).
+3. Server action `completeConnectionAction` → `completeEmbeddedSignup()` (`src/server/whatsapp/connection.ts`): exchange code → business token; list the WABA's phone numbers with that token to confirm the returned IDs (rejects forged IDs); store token and a generated 6-digit PIN encrypted; subscribe app to WABA webhooks; register the number; read quality, limit and name status.
+4. If subscribe/register fails the account stays `PENDING_SETUP` with a user-safe reason and "Finish setup" retries only the missing steps (registration is limited to 10 tries per 72 h by Meta).
 
-Credentials: access tokens are stored encrypted (AES-256-GCM, key from `ENCRYPTION_KEY`, key id stored with ciphertext to allow rotation) in a `Credential` table referenced by `WhatsAppAccount.accessTokenRef`. They are decrypted only inside the worker/provider and never serialized to the client.
+All Meta calls go through `WhatsAppProvider` (`src/server/providers/whatsapp/types.ts`), implemented by `MetaCloudProvider` on top of `GraphClient`, which adds `appsecret_proof`, timeouts, error mapping (`MetaApiError` with a user-safe message per documented code) and records call metadata (never tokens or bodies) in `ProviderApiLog`. Messaging and template methods are added in Phase 4.
 
-Connection flow in V1: manual entry of WABA ID, phone number ID and a system-user access token, followed by a verification call. Meta Embedded Signup is a later improvement because it requires Meta app review and Tech Provider setup that we cannot test here.
+Credentials: AES-256-GCM (`src/server/crypto/secrets.ts`) with key id for rotation, stored in `Credential`, referenced by `WhatsAppAccount.accessTokenRef` / `registrationPinRef`, decrypted only server-side.
 
-Every Meta API detail used is listed in `docs/META_API_VERIFICATION.md` and must be confirmed against official docs before Phase 3 code is considered done.
+A phone number can belong to one workspace (unique `phoneNumberId`). Webhook routing and that uniqueness check are the only cross-tenant reads; they use the explicitly named `systemDb` client instead of the tenant-guarded `db`.
+
+### Webhooks (inbound from Meta)
+
+`/api/webhooks/meta`: GET handles the verification handshake (`WHATSAPP_VERIFY_TOKEN`); POST verifies `X-Hub-Signature-256` on the raw body, splits deliveries into one `WebhookEvent` per message/status/change with a stable `dedupeKey` (unique; Meta retries for up to 7 days and may re-batch), routes to a workspace by phone number ID or WABA ID, returns 200 and enqueues a BullMQ job per new event. If storing fails it returns 503 so Meta retries. The worker (`npm run worker`, separate process and Docker target) processes events; a sweeper re-enqueues events stored while Redis was down. Phase 3 handlers: `account_update` (uninstall/deletion/restriction → account status), `phone_number_quality_update` (messaging limit), `user_preferences` (marketing stop/resume → contact opt-out/opt-in). `messages` and template events are stored as `DEFERRED` and replayed when their handlers ship in Phase 4.
 
 ### Customer service window
 
-The provider-neutral rule: free-form (non-template) outbound messages are allowed only within the window opened by the contact's last inbound message (Meta documents this as 24 hours; to be verified). The server computes `conversation.windowExpiresAt` from the last inbound message and the composer API refuses free-form sends outside it with a clear error that points the user to approved templates. Meta remains the final authority; a Meta rejection is surfaced, not retried.
+Free-form messages are allowed for 24 hours after the contact's last inbound message or call (verified). The server will compute `windowExpiresAt` from the last inbound message and refuse free-form sends outside it, pointing the user to approved templates (Phase 4).
 
 ## 7. Messaging pipeline and idempotency
 

@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 16 via Prisma 7. Phase 1 and Phase 2 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
+PostgreSQL 16 via Prisma 7. Phase 1, 2 and 3 models are implemented in `prisma/schema.prisma`; later-phase models below are still the plan.
 
 ## Conventions
 
@@ -37,7 +37,16 @@ PostgreSQL 16 via Prisma 7. Phase 1 and Phase 2 models are implemented in `prism
 | ImportJob, ImportRowError      | Raw CSV kept until the import runs, then cleared; failed rows kept for the report.                                                                                                                                                                                               |
 | Workspace.defaultCountry       | ISO 3166-1 alpha-2 for national phone numbers.                                                                                                                                                                                                                                   |
 
-The Phase 2 rows in the table below are superseded by this section.
+## Phase 3 models (implemented)
+
+| Model           | Notes                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential      | AES-256-GCM ciphertext, iv, auth tag, key id. Tenant-guarded.                                                                                                                                             |
+| WhatsAppAccount | WABA ID, globally unique `phoneNumberId`, status (`PENDING_SETUP`, `CONNECTED`, `NEEDS_RECONNECT`, `RESTRICTED`, `DISCONNECTED`), quality, messaging limit, name status, refs to encrypted token and PIN. |
+| WebhookEvent    | One row per change; unique (`provider`, `dedupeKey`); status `RECEIVED`/`PROCESSED`/`DEFERRED`/`IGNORED`/`FAILED`; nullable `workspaceId` (events for unknown numbers are kept for debugging).            |
+| ProviderApiLog  | Meta call metadata only (operation, path, status, Meta error code, fbtrace id, duration, request id).                                                                                                     |
+
+The Phase 2 and 3 rows in the table below are superseded by these sections.
 
 ## Later-phase models
 

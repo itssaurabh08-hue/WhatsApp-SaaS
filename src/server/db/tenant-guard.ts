@@ -18,6 +18,8 @@ export const TENANT_MODELS = new Set<string>([
   "Segment",
   "ImportJob",
   "ImportRowError",
+  "Credential",
+  "WhatsAppAccount",
 ]);
 
 export class TenantScopeError extends Error {

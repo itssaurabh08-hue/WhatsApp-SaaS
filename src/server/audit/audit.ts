@@ -27,7 +27,10 @@ export type AuditAction =
   | "segment.updated"
   | "segment.deleted"
   | "custom_field.created"
-  | "custom_field.deleted";
+  | "custom_field.deleted"
+  | "whatsapp.connected"
+  | "whatsapp.setup_failed"
+  | "whatsapp.disconnected";
 
 export interface AuditEntry {
   action: AuditAction;

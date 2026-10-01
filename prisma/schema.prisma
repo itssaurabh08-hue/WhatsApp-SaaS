@@ -1,5 +1,6 @@
 // Phase 1: identity, sessions, workspaces, membership, audit.
 // Phase 2: contacts, tags, lists, notes, custom fields, segments, CSV imports.
+// Phase 3: WhatsApp accounts (Embedded Signup), encrypted credentials, webhooks.
 // See docs/DATABASE.md.
 
 generator client {
@@ -45,6 +46,25 @@ enum ImportStatus {
   FAILED
 }
 
+enum WhatsAppAccountStatus {
+  // Embedded Signup finished but onboarding calls (subscribe/register) not yet successful.
+  PENDING_SETUP
+  CONNECTED
+  // Meta rejected our token (e.g. revoked); the customer must reconnect.
+  NEEDS_RECONNECT
+  RESTRICTED
+  DISCONNECTED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  // Stored but no handler exists yet (e.g. messages before Phase 4); replayable later.
+  DEFERRED
+  IGNORED
+  FAILED
+}
+
 enum OnboardingStep {
   BUSINESS
   WHATSAPP
@@ -74,6 +94,7 @@ model User {
   auditLogs               AuditLog[]
   contactNotes            ContactNote[]
   importJobs              ImportJob[]
+  whatsAppAccounts        WhatsAppAccount[]
 }
 
 // Reserved for Google/Microsoft/SSO login. Not used in Phase 1.
@@ -149,19 +170,23 @@ model Workspace {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  members         WorkspaceMember[]
-  invites         WorkspaceInvite[]
-  auditLogs       AuditLog[]
-  contacts        Contact[]
-  tags            Tag[]
-  contactTags     ContactTag[]
-  contactLists    ContactList[]
-  listMembers     ContactListMember[]
-  contactNotes    ContactNote[]
-  customFields    CustomFieldDefinition[]
-  segments        Segment[]
-  importJobs      ImportJob[]
-  importRowErrors ImportRowError[]
+  members          WorkspaceMember[]
+  invites          WorkspaceInvite[]
+  auditLogs        AuditLog[]
+  contacts         Contact[]
+  tags             Tag[]
+  contactTags      ContactTag[]
+  contactLists     ContactList[]
+  listMembers      ContactListMember[]
+  contactNotes     ContactNote[]
+  customFields     CustomFieldDefinition[]
+  segments         Segment[]
+  importJobs       ImportJob[]
+  importRowErrors  ImportRowError[]
+  credentials      Credential[]
+  whatsAppAccounts WhatsAppAccount[]
+  webhookEvents    WebhookEvent[]
+  providerApiLogs  ProviderApiLog[]
 }
 
 model WorkspaceMember {
@@ -398,4 +423,104 @@ model ImportRowError {
   importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
 
   @@index([importJobId, rowNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: WhatsApp connection and webhooks
+// ---------------------------------------------------------------------------
+
+// Encrypted secret (AES-256-GCM, see src/server/crypto/secrets.ts). Never sent to clients.
+model Credential {
+  id          String   @id @default(cuid())
+  workspaceId String
+  kind        String // e.g. "meta_business_token", "meta_registration_pin"
+  ciphertext  String
+  iv          String
+  authTag     String
+  keyId       String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model WhatsAppAccount {
+  id                     String                @id @default(cuid())
+  workspaceId            String
+  provider               String                @default("META_CLOUD")
+  businessAccountId      String // WABA ID
+  businessPortfolioId    String?
+  // Globally unique: a phone number can only be connected to one workspace.
+  phoneNumberId          String                @unique
+  displayPhoneNumber     String?
+  verifiedName           String?
+  status                 WhatsAppAccountStatus @default(PENDING_SETUP)
+  statusDetail           String? // user-safe explanation of the current status
+  qualityRating          String?
+  messagingLimit         String?
+  nameStatus             String?
+  codeVerificationStatus String?
+  throughputLevel        String?
+  accessTokenRef         String?
+  registrationPinRef     String?
+  webhooksSubscribedAt   DateTime?
+  registeredAt           DateTime?
+  lastSyncedAt           DateTime?
+  connectedById          String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connectedBy User?     @relation(fields: [connectedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([businessAccountId])
+}
+
+// Raw webhook deliveries, one row per change. dedupeKey makes processing idempotent
+// across Meta's retries (up to 7 days).
+model WebhookEvent {
+  id                String             @id @default(cuid())
+  provider          String             @default("META")
+  dedupeKey         String
+  workspaceId       String?
+  whatsappAccountId String?
+  eventType         String // webhook field, e.g. "messages", "account_update"
+  payload           Json
+  status            WebhookEventStatus @default(RECEIVED)
+  attempts          Int                @default(0)
+  error             String?
+  processedAt       DateTime?
+  createdAt         DateTime           @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, dedupeKey])
+  @@index([status, createdAt])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+// Metadata of calls to Meta (never tokens or message bodies), for debugging failures.
+model ProviderApiLog {
+  id                String   @id @default(cuid())
+  workspaceId       String?
+  whatsappAccountId String?
+  operation         String
+  method            String
+  path              String
+  statusCode        Int?
+  success           Boolean
+  durationMs        Int
+  errorCode         Int?
+  errorSubcode      Int?
+  errorMessage      String?
+  fbtraceId         String?
+  requestId         String?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([whatsappAccountId, createdAt(sort: Desc)])
 }

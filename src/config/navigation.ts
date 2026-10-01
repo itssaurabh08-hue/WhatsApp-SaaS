@@ -64,5 +64,14 @@ export const NAVIGATION: NavItem[] = [
   },
   { label: "Team", path: "/team", icon: "team", permission: "team:read" },
   { label: "Billing", path: "/billing", icon: "billing", permission: "billing:read" },
-  { label: "Settings", path: "/settings", icon: "settings", permission: "workspace:read" },
+  {
+    label: "Settings",
+    path: "/settings",
+    icon: "settings",
+    permission: "workspace:read",
+    children: [
+      { label: "Business", path: "/settings", permission: "workspace:read" },
+      { label: "WhatsApp", path: "/settings/whatsapp", permission: "whatsapp:read" },
+    ],
+  },
 ];

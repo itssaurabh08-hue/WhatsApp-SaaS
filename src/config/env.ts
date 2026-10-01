@@ -23,6 +23,16 @@ const schema = z.object({
     .transform((v) => v === "true"),
   EMAIL_FROM: z.string().min(1),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // WhatsApp Business Platform (Tech Provider app used for Embedded Signup).
+  WHATSAPP_APP_ID: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  WHATSAPP_CONFIG_ID: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_GRAPH_API_VERSION: z
+    .string()
+    .optional()
+    .transform((v) => v || "v25.0")
+    .pipe(z.string().regex(/^v\d+\.\d+$/, "Use the form v25.0")),
   RATE_LIMIT_DISABLED: z
     .enum(["true", "false"])
     .default("false")

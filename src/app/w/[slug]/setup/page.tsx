@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { listCountries } from "@/lib/phone";
 import { listTimezones } from "@/lib/timezones";
 import { can, getTenantContext } from "@/server/authz/tenant";
+import { getPlatformConfig } from "@/server/providers/whatsapp";
+import { Connect } from "../(shell)/settings/whatsapp/connect";
 import { continueOnboardingAction, saveBusinessDetailsAction } from "../actions";
 
 export const metadata: Metadata = { title: "Set up workspace" };
@@ -18,6 +20,7 @@ export default async function SetupPage({ params }: PageProps<"/w/[slug]/setup">
   const ctx = await getTenantContext(slug);
   const step = ctx.workspace.onboardingStep as OnboardingStepKey;
   if (step === "DONE" || !can(ctx, "workspace:update")) redirect(`/w/${slug}`);
+  const whatsappConfig = can(ctx, "whatsapp:manage") ? getPlatformConfig() : null;
 
   return (
     <div className="bg-muted/40 flex min-h-svh flex-col">
@@ -59,11 +62,32 @@ export default async function SetupPage({ params }: PageProps<"/w/[slug]/setup">
               title="Connect WhatsApp"
               description="You will connect your WhatsApp Business account and phone number using Meta's official WhatsApp Business Platform."
             >
-              <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
-                <li>You need a Meta Business account and a WhatsApp Business Account (WABA).</li>
-                <li>The phone number must be registered with the WhatsApp Business Platform.</li>
-                <li>Connecting a number is not available in this build yet. You can skip this step for now.</li>
-              </ul>
+              <div className="grid gap-4 text-sm">
+                <ul className="text-muted-foreground list-disc space-y-1 pl-5">
+                  <li>A Facebook window opens where you sign in and pick or create your business.</li>
+                  <li>You create or choose a WhatsApp Business account and verify your number by SMS or call.</li>
+                  <li>
+                    Use a number that is not currently registered in the regular WhatsApp or WhatsApp Business app.
+                  </li>
+                </ul>
+                {!whatsappConfig ? (
+                  <p className="text-muted-foreground">
+                    WhatsApp connection is not available on this server yet. You can skip this step for now.
+                  </p>
+                ) : !ctx.user.emailVerifiedAt ? (
+                  <p className="text-muted-foreground">
+                    Verify your email address first (check your inbox), then connect. You can also skip and connect
+                    later from Settings.
+                  </p>
+                ) : (
+                  <Connect
+                    slug={slug}
+                    appId={whatsappConfig.appId}
+                    configId={whatsappConfig.configId}
+                    apiVersion={whatsappConfig.apiVersion}
+                  />
+                )}
+              </div>
             </StepCard>
           )}
           {step === "CONTACTS" && (
