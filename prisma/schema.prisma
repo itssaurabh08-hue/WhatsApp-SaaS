@@ -1,0 +1,176 @@
+// Phase 1 schema: identity, sessions, workspaces, membership, audit.
+// Later phases extend this file; see docs/DATABASE.md.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  AGENT
+  ANALYST
+}
+
+enum OnboardingStep {
+  BUSINESS
+  WHATSAPP
+  CONTACTS
+  TEMPLATES
+  DONE
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique // stored lowercased
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  avatarUrl       String?
+  isPlatformAdmin Boolean   @default(false)
+  isDemo          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions                 Session[]
+  oauthAccounts            OAuthAccount[]
+  memberships              WorkspaceMember[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
+  invitesSent              WorkspaceInvite[]        @relation("InviteSender")
+  auditLogs                AuditLog[]
+}
+
+// Reserved for Google/Microsoft/SSO login. Not used in Phase 1.
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// The id is the SHA-256 hash of the session token held in the cookie, so a
+// database leak does not yield usable session tokens.
+model Session {
+  id         String   @id
+  userId     String
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Workspace {
+  id             String         @id @default(cuid())
+  name           String
+  slug           String         @unique
+  businessName   String?
+  logoUrl        String?
+  timezone       String         @default("UTC")
+  currency       String         @default("USD")
+  planId         String         @default("free")
+  onboardingStep OnboardingStep @default(BUSINESS)
+  isDemo         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  members   WorkspaceMember[]
+  invites   WorkspaceInvite[]
+  auditLogs AuditLog[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(cuid())
+  workspaceId String
+  email       String
+  role        WorkspaceRole
+  tokenHash   String        @unique
+  invitedById String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User?     @relation("InviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, email])
+}
+
+// Append-only. workspaceId is null for account-level events such as login.
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorUserId String?
+  action      String
+  entityType  String?
+  entityId    String?
+  ipAddress   String?
+  userAgent   String?
+  requestId   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+}
